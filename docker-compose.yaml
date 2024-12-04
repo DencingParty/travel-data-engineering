@@ -265,27 +265,44 @@ services:
       - -c
       - airflow
 
-  # You can enable flower by adding "--profile flower" option e.g. docker-compose --profile flower up
-  # or by explicitly targeted on the command line e.g. docker-compose up flower.
-  # See: https://docs.docker.com/compose/profiles/
-  flower:
-    <<: *airflow-common
-    command: celery flower
-    profiles:
-      - flower
+  spark-master:
+    image: bitnami/spark:latest
+    environment:
+      - SPARK_MODE=master
+      - SPARK_MASTER_PORT=7077
+      - SPARK_MASTER_WEBUI_PORT=8081
     ports:
-      - "5555:5555"
+      - "7077:7077" # Spark Master 포트
+      - "8081:8081" # Spark Master WebUI 포트
+    volumes:
+      - ./spark:/opt/spark
+    depends_on:
+      - redis
+      - postgres
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+      test: ["CMD", "/opt/bitnami/scripts/spark/healthcheck.sh"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
     restart: no
+
+  spark-worker:
+    image: bitnami/spark:latest
+    environment:
+      - SPARK_MODE=worker
+      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_WORKER_CORES=2
+      - SPARK_WORKER_MEMORY=2G
     depends_on:
-      <<: *airflow-common-depends-on
-      airflow-init:
-        condition: service_completed_successfully
+      - spark-master
+    healthcheck:
+      test: ["CMD", "/opt/bitnami/scripts/spark/healthcheck.sh"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: no
 
 volumes:
   postgres-db-volume:
