@@ -265,6 +265,7 @@ services:
       - -c
       - airflow
 
+<<<<<<< HEAD
   spark-master:
     image: bitnami/spark:latest
     environment:
@@ -281,11 +282,26 @@ services:
       - postgres
     healthcheck:
       test: ["CMD", "/opt/bitnami/scripts/spark/healthcheck.sh"]
+=======
+  # You can enable flower by adding "--profile flower" option e.g. docker-compose --profile flower up
+  # or by explicitly targeted on the command line e.g. docker-compose up flower.
+  # See: https://docs.docker.com/compose/profiles/
+  flower:
+    <<: *airflow-common
+    command: celery flower
+    profiles:
+      - flower
+    ports:
+      - "5555:5555"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:5555/"]
+>>>>>>> origin/main
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
     restart: no
+<<<<<<< HEAD
 
   spark-worker:
     image: bitnami/spark:latest
@@ -303,6 +319,12 @@ services:
       retries: 5
       start_period: 30s
     restart: no
+=======
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+>>>>>>> origin/main
 
 volumes:
   postgres-db-volume:
