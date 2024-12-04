@@ -1,0 +1,21 @@
+[2024-12-01T08:32:37.274+0000] {processor.py:161} INFO - Started process (PID=95) to work on /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py
+[2024-12-01T08:32:37.275+0000] {processor.py:830} INFO - Processing file /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py for tasks to queue
+[2024-12-01T08:32:37.278+0000] {logging_mixin.py:188} INFO - [2024-12-01T08:32:37.278+0000] {dagbag.py:545} INFO - Filling up the DagBag from /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py
+[2024-12-01T08:32:37.291+0000] {processor.py:840} INFO - DAG(s) 'example_setup_teardown' retrieved from /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py
+[2024-12-01T08:32:37.489+0000] {logging_mixin.py:188} INFO - [2024-12-01T08:32:37.488+0000] {dag.py:3096} INFO - Sync 1 DAGs
+[2024-12-01T08:32:38.343+0000] {logging_mixin.py:188} INFO - [2024-12-01T08:32:38.341+0000] {dag.py:3954} INFO - Setting next_dagrun for example_setup_teardown to 2024-11-30 00:00:00+00:00, run_after=2024-12-01 00:00:00+00:00
+[2024-12-01T08:32:38.425+0000] {processor.py:183} INFO - Processing /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py took 1.156 seconds
+[2024-12-01T08:34:24.155+0000] {processor.py:161} INFO - Started process (PID=164) to work on /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py
+[2024-12-01T08:34:24.161+0000] {processor.py:830} INFO - Processing file /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py for tasks to queue
+[2024-12-01T08:34:24.167+0000] {logging_mixin.py:188} INFO - [2024-12-01T08:34:24.166+0000] {dagbag.py:545} INFO - Filling up the DagBag from /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py
+[2024-12-01T08:34:24.178+0000] {processor.py:840} INFO - DAG(s) 'example_setup_teardown' retrieved from /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py
+[2024-12-01T08:34:24.227+0000] {logging_mixin.py:188} INFO - [2024-12-01T08:34:24.226+0000] {dag.py:3096} INFO - Sync 1 DAGs
+[2024-12-01T08:34:24.268+0000] {logging_mixin.py:188} INFO - [2024-12-01T08:34:24.268+0000] {dag.py:3954} INFO - Setting next_dagrun for example_setup_teardown to 2024-11-30 00:00:00+00:00, run_after=2024-12-01 00:00:00+00:00
+[2024-12-01T08:34:24.305+0000] {processor.py:183} INFO - Processing /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py took 0.157 seconds
+[2024-12-01T08:35:26.025+0000] {processor.py:161} INFO - Started process (PID=229) to work on /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py
+[2024-12-01T08:35:26.219+0000] {processor.py:830} INFO - Processing file /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py for tasks to queue
+[2024-12-01T08:35:26.236+0000] {logging_mixin.py:188} INFO - [2024-12-01T08:35:26.235+0000] {dagbag.py:545} INFO - Filling up the DagBag from /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py
+[2024-12-01T08:35:26.352+0000] {processor.py:840} INFO - DAG(s) 'example_setup_teardown' retrieved from /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py
+[2024-12-01T08:35:26.463+0000] {logging_mixin.py:188} INFO - [2024-12-01T08:35:26.462+0000] {dag.py:3096} INFO - Sync 1 DAGs
+[2024-12-01T08:35:26.619+0000] {logging_mixin.py:188} INFO - [2024-12-01T08:35:26.618+0000] {dag.py:3954} INFO - Setting next_dagrun for example_setup_teardown to 2024-11-30 00:00:00+00:00, run_after=2024-12-01 00:00:00+00:00
+[2024-12-01T08:35:26.769+0000] {processor.py:183} INFO - Processing /home/airflow/.local/lib/python3.12/site-packages/airflow/example_dags/example_setup_teardown.py took 0.775 seconds
