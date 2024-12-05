@@ -1574,3 +1574,12 @@ File Path                                                                       
 [2024-12-04T07:32:43.832+0000] {manager.py:452} INFO - Exiting gracefully upon receiving signal 15
 [2024-12-04T07:32:46.511+0000] {manager.py:452} INFO - Exiting gracefully upon receiving signal 15
 [2024-12-04T07:32:47.242+0000] {manager.py:452} INFO - Exiting gracefully upon receiving signal 15
+[2024-12-05T09:55:45.040+0000] {manager.py:470} INFO - Processing files using up to 2 processes at a time 
+[2024-12-05T09:55:45.048+0000] {manager.py:471} INFO - Process each file at most once every 30 seconds
+[2024-12-05T09:55:45.049+0000] {manager.py:472} INFO - Checking for new files in /opt/airflow/dags every 300 seconds
+[2024-12-05T09:55:45.049+0000] {manager.py:737} INFO - Searching for files in /opt/airflow/dags
+[2024-12-05T09:55:45.113+0000] {manager.py:740} INFO - There are 52 files in /opt/airflow/dags
+[2024-12-05T09:55:48.434+0000] {manager.py:452} INFO - Exiting gracefully upon receiving signal 15
+[2024-12-05T09:55:48.434+0000] {manager.py:452} INFO - Exiting gracefully upon receiving signal 15
+[2024-12-05T09:55:48.434+0000] {manager.py:452} INFO - Exiting gracefully upon receiving signal 15
+[2024-12-05T09:55:49.159+0000] {manager.py:452} INFO - Exiting gracefully upon receiving signal 15
