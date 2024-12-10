@@ -28,9 +28,9 @@ def upload_folder(folder_path):
             try:
                 print(f"Uploading {local_path} to {s3_key}...")
                 s3_client.upload_file(local_path, bucket_name, s3_key)
-                print(f"Successfully uploaded: {s3_key}")
+                print(f"Successfully uploaded: {s3_key}\n")
             except Exception as e:
-                print(f"Error uploading {local_path}: {e}")
+                print(f"Error uploading {local_path}: {e}\n")
 
 # 각 폴더에 대해 업로드 실행
 for folder in local_folders:
