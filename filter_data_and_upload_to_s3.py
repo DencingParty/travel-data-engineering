@@ -180,10 +180,6 @@ region_dict_default = get_weekly_region(weekly_default_dict)
 gps_dict_default = get_weekly_gps(weekly_default_dict)
 
 
-
-
-
-
 # S3 클라이언트 생성
 s3_client = boto3.client('s3')
 
@@ -211,7 +207,7 @@ def upload_to_s3(data, is_gps, current_path=""):
             base_path = f"{transformed_key}/region_data"
             file_name = f"{base_path.split('/')[-1]}_{transformed_key}"
 
-        s3_key = f"{s3_folder}/py_test/{base_path}/{file_name}.parquet"
+        s3_key = f"{s3_folder}/{base_path}/{file_name}.parquet"
 
         if isinstance(value, pd.DataFrame):  # 값이 DataFrame인 경우
             # DataFrame을 Parquet로 변환
@@ -220,15 +216,15 @@ def upload_to_s3(data, is_gps, current_path=""):
 
             # S3 업로드
             try:
-                print(f"Uploading DataFrame to {s3_key}...")
+                print(f"--------------------- S3에 DataFrame 적재중 {s3_key} ---------------------")
                 s3_client.put_object(
                     Bucket=bucket_name,
                     Key=s3_key,
                     Body=parquet_buffer.getvalue()
                 )
-                print(f"Successfully uploaded: {s3_key}\n")
+                print(f"--------------------- S3에 DataFrame 적재 완료! {s3_key} ---------------------\n")
             except Exception as e:
-                print(f"Error uploading {s3_key}: {e}\n")
+                print(f"--------------------- S3에 적재 중 에러 발생 {s3_key}: {e} ---------------------\n")
 
         elif isinstance(value, dict):  # 값이 딕셔너리인 경우 (이중 딕셔너리 처리)
             for sub_key, sub_value in value.items():
@@ -240,7 +236,7 @@ def upload_to_s3(data, is_gps, current_path=""):
                     sub_file_path = f"{transformed_key}/region_data"
                     sub_file_name = f"{sub_key}_{transformed_key}"
 
-                sub_s3_key = f"{s3_folder}/py_test/{sub_file_path}/{sub_file_name}.parquet"
+                sub_s3_key = f"{s3_folder}/{sub_file_path}/{sub_file_name}.parquet"
 
                 if isinstance(sub_value, pd.DataFrame):  # 이중 딕셔너리의 값이 DataFrame인 경우
                     # DataFrame을 Parquet로 변환
@@ -249,19 +245,23 @@ def upload_to_s3(data, is_gps, current_path=""):
 
                     # S3 업로드
                     try:
-                        print(f"Uploading DataFrame to {sub_s3_key}...")
+                        print(f"--------------------- S3에 DataFrame 적재중 {sub_s3_key} ---------------------")
                         s3_client.put_object(
                             Bucket=bucket_name,
                             Key=sub_s3_key,
                             Body=parquet_buffer.getvalue()
                         )
-                        print(f"Successfully uploaded: {sub_s3_key}\n")
+                        print(f"--------------------- S3에 DataFrame 적재 완료! {sub_s3_key} ---------------------\n")
                     except Exception as e:
-                        print(f"Error uploading {sub_s3_key}: {e}\n")
+                        print(f"--------------------- S3에 적재 중 에러 발생 {sub_s3_key}: {e} ---------------------\n")
                 else:
-                    print(f"Unsupported data type in nested dictionary: {type(sub_value)}\n")
+                    print(f"--------------------- Data가 Nested Dictionary가 아닙니다: {type(sub_value)} ---------------------\n")
         else:
-            print(f"Unsupported data type: {type(value)}\n")
+            print(f"--------------------- 지원하지 않는 Data Type {type(value)} ---------------------\n")
+    print(f"===================== S3에 모든 데이터 적제 완료! {s3_folder} =====================\n")
 
+# region 데이터 S3 적재
 upload_to_s3(region_dict_default, is_gps=False)
+
+# region 데이터 S3 적재
 upload_to_s3(gps_dict_default, is_gps=True)
