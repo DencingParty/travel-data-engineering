@@ -29,27 +29,27 @@ def filter_by_date_region(dir1="aihub", dir2="2022", start_date="2022-01-02", en
     
     # 기본 경로 설정 (data\aihub\2022)
     if start_date.startswith("2022"):       
-        base_path = os.path.join("data", dir1, dir2, "total_combined", "region_data")
+        base_path = os.path.join("data", dir1, dir2, "total_combined", "region_data_parquet")
     else:
         dir2 = "2023"
-        base_path = os.path.join("data", dir1, dir2, "total_combined", "region_data")
+        base_path = os.path.join("data", dir1, dir2, "total_combined", "region_data_parquet")
 
     dataset_list = os.listdir(base_path)
 
     region_dfs = {}
 
-    # gps_data, region_data 폴더 내부를 for loop으로 들어간다
+    # gps_data_parquet, region_data_parquet 폴더 내부를 for loop으로 들어간다
     for dataset in dataset_list:
         dataset_path = os.path.join(base_path, dataset)
 
-        if not dataset.endswith('.csv'):
-            print(f"파일 스킵: {dataset} (CSV 파일 아님)")
+        if not dataset.endswith('.parquet'):
+            print(f"파일 스킵: {dataset} (parquet 파일 아님)")
             continue
 
         try:
             # 파일 읽기 시도
-            df = pd.read_csv(dataset_path)
-            df_name = dataset.replace(".csv", "")
+            df = pd.read_parquet(dataset_path, engine="pyarrow")
+            df_name = dataset.replace(".parquet", "")
             
             # 파일에 데이터가 없는 경우 스킵
             if df.empty:
@@ -101,8 +101,11 @@ def filter_by_date_gps(df, ymd_col="DT_YMD", start_date="2022-01-02", end_date="
 
 
 """
-날짜 기준 초기 값 세팅
+set_filtering_date
 - 2022-01-02 ~ 2023-06-03까지 일주일 단위로 Dictionary 생성 (초기 값)
+    - 딕셔너리 예시 (Nested Dictionary)
+        - weekly_dict["week_1"]["start_date"] = '2022-01-02'
+        - weekly_dict["week_1"]["end_date"] = '2022-01-08'
 - 일주일 단위의 시작 날짜와 끝 날짜를 포함한 데이터
 - S3에 한 번만 넣어준다
 
@@ -117,14 +120,19 @@ get_weekly_gps
     - e.g. gps_dict_default["2022-10-16"]
 """
 
-# 2022-01-02 ~ 2023-06-03 필터링 기간 설정 (초기 값)
-weekly_default_dict = {
-    f"week_{i+1}": {
-        "start_date": str(start.date()),
-        "end_date": str((start + pd.Timedelta(days=6)).date())
+def set_filtering_date(start_date="2022-01-02", end_date="2023-06-03", freq="7D"):
+    weekly_dict = {
+        f"week_{i+1}": {
+            "start_date": str(start.date()),
+            "end_date": str((start + pd.Timedelta(days=6)).date())
+        }
+        for i, start in enumerate(pd.date_range(start=start_date, end=end_date, freq=freq))
     }
-    for i, start in enumerate(pd.date_range(start="2022-01-02", end="2023-06-03", freq="7D"))
-}
+
+    return weekly_dict
+
+# 2022-01-02 ~ 2023-06-03 필터링 기간 설정 (초기 값)
+weekly_default_dict = set_filtering_date(start_date="2022-01-02", end_date="2023-06-03", freq="7D")
 
 # Region 데이터 초기 값 세팅
 def get_weekly_region(weekly_dict):
@@ -256,4 +264,4 @@ def upload_to_s3(data, is_gps, current_path=""):
             print(f"Unsupported data type: {type(value)}\n")
 
 upload_to_s3(region_dict_default, is_gps=False)
-upload_to_s3(gps_dict_default, is_gps=False)
+upload_to_s3(gps_dict_default, is_gps=True)
