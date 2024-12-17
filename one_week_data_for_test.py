@@ -13,14 +13,6 @@ pd.set_option("display.max_columns", None)
 # 현재 작업 디렉토리 가져오기
 original_directory = os.getcwd()
 
-path_parquet_22 = os.path.join("data", "aihub", "2022", "total_combined", "gps_data_parquet", "total_gps_2022.parquet")
-path_parquet_23 = os.path.join("data", "aihub", "2023", "total_combined", "gps_data_parquet", "total_gps_2023.parquet")
-gps_22 = pd.read_parquet(path_parquet_22, engine="pyarrow")
-gps_23 = pd.read_parquet(path_parquet_23, engine="pyarrow")
-
-region_22 = os.listdir(os.path.join("data", "aihub", "2022", "total_combined", "region_data"))
-region_23 = os.listdir(os.path.join("data", "aihub", "2023", "total_combined", "region_data"))
-
 def filter_by_date_region(dir1="aihub", dir2="2022", start_date="2022-06-01", end_date="2022-06-06"):
     
     # 기본 경로 설정 (data\aihub\2022)
