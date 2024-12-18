@@ -117,9 +117,9 @@ def upload_to_s3(data, start_date, is_gps=False):
     schedule_interval=None,
     start_date=datetime(2023, 6, 1),
     catchup=False,
-    description="Process and upload region data to S3",
+    description="Extract initial region data to S3",
 )
-def region_initial_etl_dag():
+def region_initial_extract_dag():
     @task
     def process_region_data():
         weekly_dict = set_filtering_date(start_date="2022-01-02", end_date="2023-06-03", freq="7D")
@@ -136,4 +136,4 @@ def region_initial_etl_dag():
 
     process_region_data()
 
-dag = region_initial_etl_dag()
+dag = region_initial_extract_dag()

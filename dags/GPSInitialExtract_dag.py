@@ -102,10 +102,10 @@ def upload_to_s3(s3_client, dataframes, bucket_name, base_s3_prefix, week_start)
     schedule_interval=None,
     start_date=datetime(2023, 6, 1),
     catchup=False,
-    description="Filter and upload GPS data to S3",
+    description="Extract initial GPS data to S3",
 )
 
-def GPS_initial_etl_dag():
+def GPS_initial_extract_dag():
     @task
     def filter_and_upload():
         # 소요 시간이 너무 오래 걸려 3차례로 나눠서 진행.
@@ -161,4 +161,4 @@ def GPS_initial_etl_dag():
     filter_and_upload()
 
 
-dag = GPS_initial_etl_dag()
+dag = GPS_initial_extract_dag()
