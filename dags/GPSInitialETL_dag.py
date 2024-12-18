@@ -113,7 +113,7 @@ def GPS_initial_etl_dag():
         # 2. 2022-06-05 ~ 2022-12-31
         # 3. 2023-01-01 ~ 2023-06-03
         start_date = "2022-01-02"  # 테스트용 시작일
-        end_date = "2022-06-04"    # 테스트용 종료일
+        end_date = "2023-06-03"    # 테스트용 종료일
         logger.info("Starting filter_and_upload task")
         log_resource_usage("Task Start")
         weekly_dict = set_filtering_date(start_date, end_date)
