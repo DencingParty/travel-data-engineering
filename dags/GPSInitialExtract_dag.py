@@ -102,10 +102,10 @@ def upload_to_s3(s3_client, dataframes, bucket_name, base_s3_prefix, week_start)
     schedule_interval=None,
     start_date=datetime(2023, 6, 1),
     catchup=False,
-    description="Filter and upload GPS data to S3",
+    description="Extract initial GPS data to S3",
 )
 
-def GPS_initial_etl_dag():
+def GPS_initial_extract_dag():
     @task
     def filter_and_upload():
         # 소요 시간이 너무 오래 걸려 3차례로 나눠서 진행.
@@ -113,7 +113,7 @@ def GPS_initial_etl_dag():
         # 2. 2022-06-05 ~ 2022-12-31
         # 3. 2023-01-01 ~ 2023-06-03
         start_date = "2022-01-02"  # 테스트용 시작일
-        end_date = "2022-06-04"    # 테스트용 종료일
+        end_date = "2023-06-03"    # 테스트용 종료일
         logger.info("Starting filter_and_upload task")
         log_resource_usage("Task Start")
         weekly_dict = set_filtering_date(start_date, end_date)
@@ -161,4 +161,4 @@ def GPS_initial_etl_dag():
     filter_and_upload()
 
 
-dag = GPS_initial_etl_dag()
+dag = GPS_initial_extract_dag()
