@@ -123,9 +123,13 @@ services:
 
   airflow-webserver:
     <<: *airflow-common
+    image: custom-airflow:latest
     command: webserver
     ports:
       - "8080:8080"
+    volumes:
+      - airflow-logs:/opt/airflow/logs
+      - airflow-dags:/opt/airflow/dags
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
       interval: 30s
@@ -137,6 +141,7 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+
 
   airflow-scheduler:
     <<: *airflow-common
@@ -308,4 +313,9 @@ services:
     restart: no
 
 volumes:
+  airflow-logs:
+    driver: local
+  airflow-dags:
+    driver: local
   postgres-db-volume:
+    driver: local
