@@ -1,0 +1,26 @@
+FROM apache/airflow:2.9.1
+
+USER root
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    coreutils \
+    util-linux \
+    grep \
+    gawk \
+    procps \
+    bash \
+    openjdk-17-jdk \
+    && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+RUN curl -o /tmp/spark.tgz https://archive.apache.org/dist/spark/spark-3.5.3/spark-3.5.3-bin-hadoop3.tgz \
+    && tar -xvzf /tmp/spark.tgz -C /opt/ \
+    && mv /opt/spark-3.5.3-bin-hadoop3 /opt/spark \
+    && rm /tmp/spark.tgz
+
+USER airflow
+RUN pip install apache-airflow-providers-apache-spark boto3 pandas
+
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+ENV SPARK_HOME=/opt/spark
+ENV PATH=$JAVA_HOME/bin:$SPARK_HOME/bin:$PATH
