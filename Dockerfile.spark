@@ -1,0 +1,36 @@
+FROM bitnami/spark:latest
+
+USER root
+
+# 기본 유틸리티 설치
+RUN apt-get update && apt-get install -y \
+    openjdk-17-jdk \
+    curl \
+    coreutils \
+    util-linux \
+    grep \
+    gawk \
+    procps \
+    bash \
+    && apt-get clean
+
+# Spark 환경 변수 설정
+ENV SPARK_HOME=/opt/bitnami/spark
+ENV JAVA_HOME=/opt/bitnami/java
+ENV PATH=$JAVA_HOME/bin:$SPARK_HOME/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+#ENV PATH=$JAVA_HOME/bin:$SPARK_HOME/bin:/usr/bin:/bin:$PATH
+# ENV SPARK_HOME=/opt/spark
+# ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+# ENV PATH=$JAVA_HOME/bin:$SPARK_HOME/bin:$PATH
+
+# Spark 디렉터리 권한 설정
+RUN mkdir -p /opt/bitnami/spark/conf /opt/bitnami/spark/logs /opt/bitnami/spark/work && \
+    chmod -R 775 /opt/bitnami/spark && \
+    chown -R 1001:0 /opt/bitnami/spark
+# Spark 디렉터리 권한 설정 (통합된 디렉터리 마운트를 전제로 불필요한 디렉터리 생성 제거)
+# RUN chmod -R 775 /opt/bitnami/spark && \
+#     chown -R 1001:0 /opt/bitnami/spark && \
+#     /opt/bitnami/scripts/spark/entrypoint.sh
+
+USER 1001

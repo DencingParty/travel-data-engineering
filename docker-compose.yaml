@@ -4,7 +4,7 @@
 # regarding copyright ownership.  The ASF licenses this file
 # to you under the Apache License, Version 2.0 (the
 # "License"); you may not use this file except in compliance
-# with the License.  You may obtain a copy of the License at
+# with the License.  You may obtain a copy of the License atx
 #
 #   http://www.apache.org/licenses/LICENSE-2.0
 #
@@ -49,8 +49,13 @@ x-airflow-common:
   # In order to add custom dependencies or upgrade provider packages you can use your extended image.
   # Comment the image line, place your Dockerfile in the directory where you placed the docker-compose.yaml
   # and uncomment the "build" line below, Then run `docker-compose build` to build the images.
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.9.1}
-  # build: .
+  # build:
+  #   context: .
+  #   dockerfile: Dockerfile
+  # image: airflow-custom:latest 
+  build: 
+    context: .
+    dockerfile: Dockerfile.airflow
   environment:
     &airflow-common-env
     # AIRFLOW_CONN_AWS_CONN_ID: ${AIRFLOW_CONN_AWS}
@@ -61,8 +66,11 @@ x-airflow-common:
     AIRFLOW__CELERY__RESULT_BACKEND: db+postgresql://airflow:airflow@postgres/airflow
     AIRFLOW__CELERY__BROKER_URL: redis://:@redis:6379/0
     AIRFLOW__CORE__FERNET_KEY: ''
+    #JAVA_HOME: /usr
+    #SPARK_HOME: /opt/spark
+    #PATH: /usr/lib/jvm/java-17-openjdk-amd64/bin:/opt/spark/bin:/home/airflow/.local/bin:/usr/local/bin:$PATH
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
-    AIRFLOW__CORE__LOAD_EXAMPLES: 'true'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     # yamllint disable rule:line-length
     # Use simple http server on scheduler for health checks
@@ -71,17 +79,17 @@ x-airflow-common:
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     # WARNING: Use _PIP_ADDITIONAL_REQUIREMENTS option ONLY for a quick checks
     # for other purpose (development, test and especially production usage) build/extend Airflow image.
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-}
+    # _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-apache-spark boto3 pandas}
     # The following line can be used to set a custom config file, stored in the local config folder
     # If you want to use it, outcomment it and replace airflow.cfg with the name of your config file
     # AIRFLOW_CONFIG: '/opt/airflow/config/airflow.cfg'
   volumes:
-    - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
-    - ${AIRFLOW_PROJ_DIR:-.}/logs:/opt/airflow/logs
-    - ${AIRFLOW_PROJ_DIR:-.}/config:/opt/airflow/config
-    - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
-    - ${AIRFLOW_PROJ_DIR:-.}/data:/opt/airflow/data
-    - ${AIRFLOW_PROJ_DIR:-.}/spark:/opt/airflow/spark
+    - ./dags:/opt/airflow/dags
+    - ./logs:/opt/airflow/logs
+    - ./config:/opt/airflow/config
+    - ./plugins:/opt/airflow/plugins
+    - ./data:/opt/airflow/data
+    #- ./spark:/opt/airflow/spark
 
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
@@ -123,6 +131,9 @@ services:
 
   airflow-webserver:
     <<: *airflow-common
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
     command: webserver
     ports:
       - "8080:8080"
@@ -137,9 +148,15 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-apache-spark boto3 pandas
 
   airflow-scheduler:
     <<: *airflow-common
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
     command: scheduler
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
@@ -152,10 +169,19 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-apache-spark boto3 pandas
 
   airflow-worker:
     <<: *airflow-common
-    command: celery worker
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    command: >
+      bash -c "
+      exec airflow celery worker
+      "
     healthcheck:
       # yamllint disable rule:line-length
       test:
@@ -167,9 +193,10 @@ services:
       start_period: 30s
     environment:
       <<: *airflow-common-env
+      DUMB_INIT_SETSID: "0"
+      _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-apache-spark boto3 pandas
       # Required to handle warm shutdown of the celery workers properly
       # See https://airflow.apache.org/docs/docker-stack/entrypoint.html#signal-propagation
-      DUMB_INIT_SETSID: "0"
     restart: no
     depends_on:
       <<: *airflow-common-depends-on
@@ -178,6 +205,9 @@ services:
 
   airflow-triggerer:
     <<: *airflow-common
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
     command: triggerer
     healthcheck:
       test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
@@ -190,6 +220,9 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      _PIP_ADDITIONAL_REQUIREMENTS: apache-airflow-providers-apache-spark boto3 pandas
 
   airflow-init:
     <<: *airflow-common
@@ -198,6 +231,14 @@ services:
     command:
       - -c
       - |
+        pip install apache-airflow-providers-apache-spark boto3 pandas
+        airflow db init && airflow users create \
+          --username admin \
+          --firstname admin \
+          --lastname admin \
+          --role Admin \
+          --email admin@example.com \
+          --password admin
         if [[ -z "${AIRFLOW_UID}" ]]; then
           echo
           echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
@@ -242,7 +283,7 @@ services:
         fi
         mkdir -p /sources/logs /sources/dags /sources/plugins /sources/data /sources/spark
         chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins,data,spark}
-        exec /entrypoint airflow version
+        exec /entrypoint airflow db init && airflow version
     # yamllint enable rule:line-length
     environment:
       <<: *airflow-common-env
@@ -269,43 +310,67 @@ services:
       - airflow
 
   spark-master:
-    image: bitnami/spark:latest
+    #image: bitnami/spark:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
     environment:
       - SPARK_MODE=master
       - SPARK_MASTER_PORT=7077
       - SPARK_MASTER_WEBUI_PORT=8081
+      - JAVA_HOME=/opt/bitnami/java
+      - SPARK_HOME=/opt/bitnami/spark
+      #- PATH=/usr/lib/jvm/java-17-openjdk-amd64/bin:/opt/spark/bin:$PATH
+      - PATH=/opt/bitnami/java/bin:/opt/bitnami/spark/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+      #- PATH=/opt/bitnami/java/bin:/opt/bitnami/spark/bin:/usr/bin:/bin:$PATH
     ports:
       - "7077:7077" # Spark Master 포트
       - "8081:8081" # Spark Master WebUI 포트
     volumes:
-      - ./spark:/opt/spark
+      # - ./spark:/opt/bitnami/spark
+      - ./spark/conf:/opt/bitnami/spark/conf
+      - ./spark/logs:/opt/bitnami/spark/logs
+      - ./spark/work:/opt/bitnami/spark/work
     depends_on:
       - redis
       - postgres
     healthcheck:
-      test: ["CMD", "/opt/bitnami/scripts/spark/healthcheck.sh"]
+      test: ["CMD", "curl", "-f", "http://localhost:8081"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
-    restart: no
+    restart: always
 
   spark-worker:
-    image: bitnami/spark:latest
+    #image: bitnami/spark:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.spark
     environment:
       - SPARK_MODE=worker
       - SPARK_MASTER_URL=spark://spark-master:7077
+      - JAVA_HOME=/opt/bitnami/java
+      - SPARK_HOME=/opt/bitnami/spark
+      #- PATH=/usr/lib/jvm/java-17-openjdk-amd64/bin:/opt/spark/bin:$PATH
+      #- PATH=/opt/bitnami/java/bin:/opt/bitnami/spark/bin:/usr/bin:/bin:$PATH
+      - PATH=/opt/bitnami/java/bin:/opt/bitnami/spark/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
       - SPARK_WORKER_CORES=2
       - SPARK_WORKER_MEMORY=2G
+    volumes:
+      # - ./spark:/opt/bitnami/spark
+      - ./spark/conf:/opt/bitnami/spark/conf
+      - ./spark/logs:/opt/bitnami/spark/logs
+      - ./spark/work:/opt/bitnami/spark/work
     depends_on:
       - spark-master
     healthcheck:
-      test: ["CMD", "/opt/bitnami/scripts/spark/healthcheck.sh"]
+      test: ["CMD", "curl", "-f", "http://localhost:8081"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 30s
-    restart: no
+    restart: always
 
 volumes:
   postgres-db-volume:
