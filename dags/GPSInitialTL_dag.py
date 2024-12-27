@@ -40,30 +40,30 @@ PROCESSED_FOLDER = "processed-data"
     schedule_interval=None,
     start_date=datetime(2023, 6, 1),
     catchup=False,
-    description="Transform and Load initial Region data to S3",
+    description="Transform and Load initial GPS data to S3",
 )
 
-def region_initial_tl_dag():
+def gps_initial_tl_dag():
 
     @task
     def trigger_spark_job():
         """
         SparkSubmitOperator를 통해 Spark job을 실행
-        Region 데이터를 변환하고 S3에 적재
+        GPS 데이터를 변환하고 S3에 적재
         """
 
 
         spark_submit_task = SparkSubmitOperator(
-            task_id="transform_region_data",
-            application="/opt/airflow/spark/transform_region_data.py",
+            task_id="transform_gps_data",
+            application="/opt/airflow/spark/transform_gps_data.py",
             conn_id="spark_default",
             application_args=[
                 "--input_s3_path", f"s3a://{S3_BUCKET_NAME}/{RAW_FOLDER}/",
                 "--output_s3_path", f"s3a://{S3_BUCKET_NAME}/{PROCESSED_FOLDER}/",
                 "--aws_access_key", credentials.access_key,
                 "--aws_secret_key", credentials.secret_key,
-                "--start_date", "2022-06-12",
-                "--end_date", "2022-06-19",
+                "--start_date", "2022-09-18",
+                "--end_date", "2022-09-26",
             ],
             conf={
                 "spark.executor.memory": "2g",
@@ -81,4 +81,4 @@ def region_initial_tl_dag():
 
     trigger_spark_job()
 
-dag = region_initial_tl_dag()
+dag = gps_initial_tl_dag()

@@ -14,7 +14,7 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 spark = SparkSession.builder \
-    .appName("Transform Region Data") \
+    .appName("Transform GPS Data") \
     .config("spark.sql.legacy.parquet.int64AsTimestampMillis", "false") \
     .config("spark.sql.legacy.parquet.nanosAsLong", "true") \
     .getOrCreate()
@@ -56,7 +56,7 @@ def process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key,
 
         # 파일명 추출 및 저장 경로 설정
         file_name = os.path.basename(file_path)
-        file_prefix = '/'.join(file_path.split('/')[-3:-1])  # 230521/region_data 추출
+        file_prefix = '/'.join(file_path.split('/')[-3:-1])  # 230521/gps_data 추출
         processed_file_name = file_name.replace('.parquet', '_snappy.parquet')
         output_dir = f"{output_s3_path}{file_prefix}/"
         temp_output_path = f"{output_dir}temp/"
@@ -158,7 +158,7 @@ def main(input_s3_path, output_s3_path, aws_access_key, aws_secret_key, start_da
     date_range = pd.date_range(start=start_date, end=end_date, freq='7D').strftime("%y%m%d")
 
     for date in date_range:
-        target_prefix = f"{input_s3_path.replace(f's3a://{bucket_name}/', '')}{date}/region_data/"
+        target_prefix = f"{input_s3_path.replace(f's3a://{bucket_name}/', '')}{date}/gps_data/"
         logger.info(f"처리 대상 S3 경로: {target_prefix}")
 
         parquet_files = list_s3_parquet_files(bucket_name, target_prefix, aws_access_key, aws_secret_key)
