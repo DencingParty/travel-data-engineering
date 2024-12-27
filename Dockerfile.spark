@@ -1,0 +1,29 @@
+FROM bitnami/spark:3.5.0
+
+USER root
+
+# curl 설치 및 hadoop-aws, aws-sdk 추가 (S3 연동 설정)
+RUN apt-get update && \
+    apt-get install -y curl && \
+    mkdir -p /opt/bitnami/spark/jars && \
+    curl -o /opt/bitnami/spark/jars/hadoop-aws-3.3.2.jar \
+    https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.2/hadoop-aws-3.3.2.jar && \
+    curl -o /opt/bitnami/spark/jars/aws-java-sdk-bundle-1.11.901.jar \
+    https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.901/aws-java-sdk-bundle-1.11.901.jar
+
+# spark-env.sh 생성 및 ClassPath 설정
+RUN cp /opt/bitnami/spark/conf/spark-env.sh.template /opt/bitnami/spark/conf/spark-env.sh && \
+    echo "export SPARK_DIST_CLASSPATH=/opt/bitnami/spark/jars/*" >> /opt/bitnami/spark/conf/spark-env.sh
+
+# spark-defaults.conf 설정 (S3A 파일시스템 사용)
+RUN mkdir -p /opt/bitnami/spark/conf && \
+    echo "spark.hadoop.fs.s3a.impl=org.apache.hadoop.fs.s3a.S3AFileSystem" >> /opt/bitnami/spark/conf/spark-defaults.conf && \
+    echo "spark.hadoop.fs.s3a.aws.credentials.provider=org.apache.hadoop.fs.s3a.SimpleAWSCredentialsProvider" >> /opt/bitnami/spark/conf/spark-defaults.conf && \
+    echo "spark.driver.extraClassPath /opt/bitnami/spark/jars/*" >> /opt/bitnami/spark/conf/spark-defaults.conf && \
+    echo "spark.executor.extraClassPath /opt/bitnami/spark/jars/*" >> /opt/bitnami/spark/conf/spark-defaults.conf
+
+# 환경 변수 즉시 설정
+ENV SPARK_DIST_CLASSPATH=/opt/bitnami/spark/jars/*
+
+# 컨테이너 시작 시 Spark 마스터 실행 (ENTRYPOINT 사용)
+# ENTRYPOINT ["/bin/bash", "-c", "source /opt/bitnami/spark/conf/spark-env.sh && exec /opt/bitnami/scripts/spark/run.sh"]

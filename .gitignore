@@ -1,0 +1,5 @@
+.env
+data/
+logs/
+dags/__pycache__/
+datatypeTest.ipynb
