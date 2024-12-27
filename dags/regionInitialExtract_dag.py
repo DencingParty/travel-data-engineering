@@ -92,8 +92,16 @@ def upload_to_s3(data, start_date, is_gps=False):
         logger.info(f"Starting S3 upload for week starting {start_date} ({base_path})")
 
         for file_name, df in data.items():
-            file_name_key = f"gps_data_{transformed_key}" if is_gps else f"{file_name}_{transformed_key}"
-            s3_key = f"{S3_FOLDER}/{base_path}/{file_name_key}.parquet"
+            if is_gps:
+                file_name_key = f"gps_data_{transformed_key}"
+                s3_key = f"{S3_FOLDER}/{base_path}/{file_name_key}.parquet"
+            else:
+                if "tc_" in file_name or "tn_activity_his_" in file_name:
+                    file_name_key = f"{file_name}"
+                    s3_key = f"{S3_FOLDER}/metadata/{file_name_key}.parquet"
+                else:
+                    file_name_key = f"{file_name}_{transformed_key}"
+                    s3_key = f"{S3_FOLDER}/{base_path}/{file_name_key}.parquet"
 
             # DataFrame을 Parquet로 변환
             parquet_buffer = BytesIO()

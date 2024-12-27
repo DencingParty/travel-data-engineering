@@ -38,17 +38,16 @@ column_selection = {
         "TRAVEL_ID", "LODGING_NM", "ROAD_NM_ADDR", 
         "PAYMENT_AMT_WON", "PAYMENT_DT_YMD"
     ],
-    # 이동내역
+    # 이동내역 (START_VISIT_AREA_ID, START_DT_YMD 제거)
     "tn_move_his": [
-        "TRAVEL_ID", "TRIP_ID", "START_VISIT_AREA_ID", "END_VISIT_AREA_ID", 
-        "START_DT_YMD", "START_DT_MIN", "END_DT_YMD", "END_DT_MIN", 
-        "MVMN_CD_1", "MVMN_CD_2"
+        "TRAVEL_ID", "TRIP_ID", "END_VISIT_AREA_ID", 
+        "END_DT_YMD", "MVMN_CD_1"
     ],
     # 이동수단소비내역 (PAYMENT_DT_MIN 제거)
     "tn_mvmn_consume": [
         "TRAVEL_ID", "MVMN_SE_NM", "PAYMENT_AMT_WON", "PAYMENT_DT_YMD"
     ],
-    "tn_travel_여행": [
+    "tn_travel_travel": [
         "TRAVEL_ID", "TRAVEL_START_YMD", "TRAVEL_END_YMD", "TRAVEL_NM"
     ],
     "tn_traveller_master": [
@@ -81,6 +80,8 @@ def preprocess_data(df: DataFrame, file_name: str) -> DataFrame:
     - 결측치가 있는 행 제거
     """
     base_name = "_".join(file_name.split("_")[:3])  # 파일명에서 처음 3개 단어 추출
+    if "tn_travel_" in base_name:
+        base_name = "tn_travel_travel"
     logger.info(f"{base_name} 파일 전처리 시작...")
     
     # 필요 없는 파일 제거
@@ -109,10 +110,11 @@ def preprocess_data(df: DataFrame, file_name: str) -> DataFrame:
 
     return df
 
-def process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key):
+def process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key, meta=False):
     """
     개별 parquet 파일 transform 및 단일 파일로 S3 저장
     """
+
     try:
         # 파일 읽기
         logger.info(f"{file_path} 읽는 중...")
@@ -124,8 +126,31 @@ def process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key,
         logger.info(f"{file_path} - 원본 데이터 확인:")
         df.show(5, truncate=False)
 
-        # 데이터 전처리 추가
-        df = preprocess_data(df, file_name)
+        if meta == False:
+            # 데이터 전처리 추가
+            df = preprocess_data(df, file_name)
+        else:
+            if "tn_activity_his" in file_name:
+                base_name = "_".join(file_name.split("_")[:3]) 
+                logger.info(f"{base_name} 파일 전처리 시작...")
+
+                # 필요한 컬럼만 남기기
+                if base_name in column_selection:
+                    columns_to_keep = column_selection[base_name]
+                    existing_columns = [col for col in columns_to_keep if col in df.columns]
+                    if not existing_columns:
+                        logger.warning(f"{file_name}에서 필요한 컬럼이 존재하지 않습니다.")
+                        return None
+                    
+                    df = df.select(*existing_columns)
+                    logger.info(f"{file_name}에서 {len(existing_columns)}개 컬럼 유지, 나머지 컬럼 제거.")
+
+                    # 결측치 처리
+                    before_drop = df.count()
+                    df = df.na.drop()
+                    after_drop = df.count()
+                    dropped_rows = before_drop - after_drop
+                    logger.info(f"{file_name}에서 {before_drop}개 행 중 {dropped_rows}개의 결측치 행 제거.")
 
         if df is None:
             logger.info(f"{file_path} - 저장 대상이 아님. 처리 건너뜀.")
@@ -142,7 +167,10 @@ def process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key,
         file_name = os.path.basename(file_path)
         file_prefix = '/'.join(file_path.split('/')[-3:-1])  # 230521/region_data 추출
         processed_file_name = file_name.replace('.parquet', '_snappy.parquet')
-        output_dir = f"{output_s3_path}{file_prefix}/"
+        if meta == True:
+            output_dir = f"{output_s3_path}metadata/"
+        else:
+            output_dir = f"{output_s3_path}{file_prefix}/"
         temp_output_path = f"{output_dir}temp/"
 
         # 저장된 디렉터리에서 파일을 찾아 단일 파일로 복사
@@ -237,6 +265,17 @@ def list_s3_parquet_files(bucket_name, prefix, aws_access_key, aws_secret_key):
 
 def main(input_s3_path, output_s3_path, aws_access_key, aws_secret_key, start_date, end_date):
     bucket_name = input_s3_path.split('/')[2]
+
+    meta_target_prefix = f"{input_s3_path.replace(f's3a://{bucket_name}/', '')}metadata/"
+    logger.info(f"처리 대상 S3 경로: {meta_target_prefix}")
+    meta_parquet_files = list_s3_parquet_files(bucket_name, meta_target_prefix, aws_access_key, aws_secret_key)
+
+    if not meta_parquet_files:
+        logger.warning("metadata 경로에 parquet 파일이 없습니다.")
+        return
+
+    for file_path in meta_parquet_files:
+        process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key, meta=True)
     
     # 주 단위 날짜 생성
     date_range = pd.date_range(start=start_date, end=end_date, freq='7D').strftime("%y%m%d")
@@ -252,7 +291,7 @@ def main(input_s3_path, output_s3_path, aws_access_key, aws_secret_key, start_da
             continue
 
         for file_path in parquet_files:
-            process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key)
+            process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key, meta=False)
 
 
 if __name__ == "__main__":
