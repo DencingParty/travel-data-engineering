@@ -4,11 +4,7 @@ from airflow.providers.amazon.aws.hooks.base_aws import AwsBaseHook
 from datetime import datetime, timedelta
 import boto3
 import os
-import logging
 
-# 로깅 설정
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-logger = logging.getLogger(__name__)
 
 # 'aws_default'는 Airflow에서 설정한 Connection ID입니다.
 aws_hook = AwsBaseHook(aws_conn_id='AWS_CONNECTION_ID', client_type='s3')
@@ -62,8 +58,8 @@ def region_initial_tl_dag():
                 "--output_s3_path", f"s3a://{S3_BUCKET_NAME}/{PROCESSED_FOLDER}/",
                 "--aws_access_key", credentials.access_key,
                 "--aws_secret_key", credentials.secret_key,
-                "--start_date", "2022-06-12",
-                "--end_date", "2022-06-19",
+                "--start_date", "2022-10-23",
+                "--end_date", "2022-10-30",
             ],
             conf={
                 "spark.executor.memory": "2g",
