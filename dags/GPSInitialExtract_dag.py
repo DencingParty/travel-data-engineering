@@ -53,10 +53,8 @@ def set_filtering_date(start_date, end_date, freq="7D"):
     }
 
 # GPS 데이터 필터링 함수
-def filter_by_date_gps(df, ymd_col, min_col, start_date, end_date):
-    df[ymd_col] = pd.to_datetime(df[ymd_col], errors="coerce").dt.floor("ms").astype("datetime64[ms]") # ns -> ms 변환 : ns 단위를 spark가 읽지를 못해서 변경
-    df[min_col] = pd.to_datetime(df[min_col], errors="coerce").dt.floor("ms").astype("datetime64[ms]")
-
+def filter_by_date_gps(df, ymd_col, start_date, end_date):
+    df[ymd_col] = pd.to_datetime(df[ymd_col], errors="coerce")
     return df[(df[ymd_col] >= start_date) & (df[ymd_col] <= end_date)]
 
 
@@ -141,7 +139,7 @@ def GPS_initial_extract_dag():
                 parquet_file = pq.ParquetFile(paths["2022"])
                 for batch in parquet_file.iter_batches(batch_size=100000):
                     chunk_df = batch.to_pandas()
-                    filtered = filter_by_date_gps(chunk_df, "DT_YMD", "DT_MIN", week_start, week_end)
+                    filtered = filter_by_date_gps(chunk_df, "DT_YMD", week_start, week_end)
                     if not filtered.empty:
                         filtered_chunks.append(filtered)
 
@@ -150,7 +148,7 @@ def GPS_initial_extract_dag():
                 parquet_file = pq.ParquetFile(paths["2023"])
                 for batch in parquet_file.iter_batches(batch_size=100000):
                     chunk_df = batch.to_pandas()
-                    filtered = filter_by_date_gps(chunk_df, "DT_YMD", "DT_MIN", week_start, week_end)
+                    filtered = filter_by_date_gps(chunk_df, "DT_YMD", week_start, week_end)
                     if not filtered.empty:
                         filtered_chunks.append(filtered)
 
