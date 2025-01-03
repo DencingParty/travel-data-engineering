@@ -18,7 +18,7 @@ BASE_PATH = "/opt/airflow/data"
 
 # S3 설정
 S3_BUCKET_NAME = "travel-de-storage"
-S3_FOLDER = "raw-data-test-tek"
+S3_FOLDER = "raw-data"
 
 # S3 클라이언트 생성 함수
 def get_s3_client():

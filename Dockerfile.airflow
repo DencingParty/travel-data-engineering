@@ -32,7 +32,10 @@ USER airflow
 # Python 패키지 설치
 RUN pip install apache-airflow-providers-apache-spark boto3 pandas
 
+# JAVA_HOME OS별 환경 변수 설정
+ARG TARGETARCH
+ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-${TARGETARCH:-amd64}
+
 # 환경 변수 설정
-ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
 ENV SPARK_HOME=/opt/spark
 ENV PATH=$JAVA_HOME/bin:$SPARK_HOME/bin:$PATH

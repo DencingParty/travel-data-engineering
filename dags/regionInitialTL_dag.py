@@ -12,8 +12,8 @@ credentials = aws_hook.get_credentials()
 
 # 기본 설정
 S3_BUCKET_NAME = "travel-de-storage"
-RAW_FOLDER = "raw-data-test-tek"
-PROCESSED_FOLDER = "processed-data-test-tek"
+RAW_FOLDER = "raw-data"
+PROCESSED_FOLDER = "processed-data"
 
 # S3 클라이언트 생성
 # def get_s3_client():
