@@ -59,6 +59,8 @@ def filter_by_date_region(dir1="aihub", dir2="2022", start_date="2022-01-02", en
                 continue
 
             ymd_columns = [col for col in df.columns if col.endswith('YMD') and "START" not in col]
+            min_columns = [col for col in df.columns if col.endswith('MIN')]
+
             if not ymd_columns:
                 region_dfs[df_name] = df
                 continue
@@ -67,7 +69,10 @@ def filter_by_date_region(dir1="aihub", dir2="2022", start_date="2022-01-02", en
                 ymd_columns = [ymd_columns[-1]]
 
             for ymd_col in ymd_columns:
-                df[ymd_col] = pd.to_datetime(df[ymd_col], errors="coerce")
+                df[ymd_col] = pd.to_datetime(df[ymd_col], errors="coerce").dt.floor("ms").astype("datetime64[ms]") # ns -> ms 변환 : ns 단위를 spark가 읽지를 못해서 변경
+
+            for min_col in min_columns:
+                df[min_col] = pd.to_datetime(df[min_col], errors="coerce").dt.floor("ms").astype("datetime64[ms]")
 
             filtered_df = df[(df[ymd_columns[0]] >= start_date) & (df[ymd_columns[0]] <= end_date)]
             region_dfs[df_name] = filtered_df
@@ -87,12 +92,20 @@ def upload_to_s3(data, start_date, is_gps=False):
         logger.info(f"Starting S3 upload for week starting {start_date} ({base_path})")
 
         for file_name, df in data.items():
-            file_name_key = f"gps_data_{transformed_key}" if is_gps else f"{file_name}_{transformed_key}"
-            s3_key = f"{S3_FOLDER}/{base_path}/{file_name_key}.parquet"
+            if is_gps:
+                file_name_key = f"gps_data_{transformed_key}"
+                s3_key = f"{S3_FOLDER}/{base_path}/{file_name_key}.parquet"
+            else:
+                if "tc_" in file_name or "tn_activity_his_" in file_name:
+                    file_name_key = f"{file_name}"
+                    s3_key = f"{S3_FOLDER}/metadata/{file_name_key}.parquet"
+                else:
+                    file_name_key = f"{file_name}_{transformed_key}"
+                    s3_key = f"{S3_FOLDER}/{base_path}/{file_name_key}.parquet"
 
             # DataFrame을 Parquet로 변환
             parquet_buffer = BytesIO()
-            df.to_parquet(parquet_buffer, index=False)
+            df.to_parquet(parquet_buffer, engine='pyarrow', index=False, coerce_timestamps='ms')
 
             # S3 업로드
             s3_client.put_object(
