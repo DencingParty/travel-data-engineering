@@ -107,8 +107,8 @@ def upload_to_s3(data, start_date, is_gps=False):
         "retry_delay": timedelta(minutes=5),
     },
     schedule_interval="@weekly",  # 매주 실행
-    start_date=datetime(2023, 6, 4),  # 첫 실행 날짜
-    end_date=datetime(2023, 12, 31),  # 종료 날짜
+    start_date=datetime(2023, 6, 4),  # 스케쥴링 첫 실행 날짜
+    end_date=datetime(2023, 12, 31),  # 스케쥴링 종료 날짜
     catchup=True,
     description="Weekly ETL to filter region data and upload to S3",
 )
