@@ -13,14 +13,22 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-spark = SparkSession.builder \
-    .appName("Transform Region Data") \
-    .config("spark.sql.legacy.parquet.int64AsTimestampMillis", "false") \
-    .config("spark.sql.legacy.parquet.nanosAsLong", "true") \
-    .getOrCreate()
+def get_spark_session(aws_access_key, aws_secret_key):
+    """
+    SparkSession을 생성하거나 기존 세션을 가져옴
+    - AWS S3와의 연결 설정 포함
+    """
+    spark = SparkSession.builder \
+        .appName("Transform Region Data") \
+        .config("spark.sql.legacy.parquet.int64AsTimestampMillis", "false") \
+        .config("spark.sql.legacy.parquet.nanosAsLong", "true") \
+        .config("spark.hadoop.fs.s3a.access.key", aws_access_key) \
+        .config("spark.hadoop.fs.s3a.secret.key", aws_secret_key) \
+        .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
+        .getOrCreate()
+    spark.sparkContext.setLogLevel("WARN")  # Spark 로그는 WARN 이상만 출력
+    return spark
 
-# Spark 내부 로그만 WARN으로 설정
-spark.sparkContext.setLogLevel("WARN")  # Spark 로그는 WARN 이상만 출력
 
 column_selection = {
     # 활동소비내역 (PAYMENT_DT_MIN 제거, SGG_CD 제거)
@@ -110,11 +118,10 @@ def preprocess_data(df: DataFrame, file_name: str) -> DataFrame:
 
     return df
 
-def process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key, meta=False):
+def process_parquet_file(spark, file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key, meta=False):
     """
-    개별 parquet 파일 transform 및 단일 파일로 S3 저장
+    개별 Parquet 파일 transform 및 단일 파일로 S3 저장
     """
-
     try:
         # 파일 읽기
         logger.info(f"{file_path} 읽는 중...")
@@ -152,8 +159,9 @@ def process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key,
                     dropped_rows = before_drop - after_drop
                     logger.info(f"{file_name}에서 {before_drop}개 행 중 {dropped_rows}개의 결측치 행 제거.")
 
-        if df is None:
-            logger.info(f"{file_path} - 저장 대상이 아님. 처리 건너뜀.")
+        # 데이터가 없거나 비어있는 경우 처리 건너뜀
+        if df is None or df.rdd.isEmpty():
+            logger.warning(f"{file_name} - 처리할 데이터가 없습니다. 건너뜀.")
             return  # 파일을 저장하지 않고 스킵
 
         # BINARY 타입 변환
@@ -244,55 +252,68 @@ def process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key,
         logger.error(f"{file_path} 처리 중 오류 발생: {str(e)}")
 
 
+
 def list_s3_parquet_files(bucket_name, prefix, aws_access_key, aws_secret_key):
+    """
+    S3에서 parquet 파일 목록 가져오기
+    """
     s3 = boto3.client('s3',
                       aws_access_key_id=aws_access_key,
                       aws_secret_access_key=aws_secret_key)
 
-    response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
-    
-    if 'Contents' not in response:
-        logger.warning(f"{prefix} 경로에 parquet 파일이 없습니다.")
-        return []
+    try:
+        response = s3.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+        if 'Contents' not in response:
+            logger.warning(f"{prefix} 경로에 parquet 파일이 없습니다.")
+            return []
 
-    parquet_files = [
-        f"s3a://{bucket_name}/{item['Key']}"
-        for item in response['Contents']
-        if item['Key'].endswith('.parquet')
-    ]
-    return parquet_files
+        parquet_files = [
+            f"s3a://{bucket_name}/{item['Key']}"
+            for item in response['Contents']
+            if item['Key'].endswith('.parquet')
+        ]
+        logger.info(f"{prefix} 경로에서 {len(parquet_files)}개의 parquet 파일 발견.")
+        return parquet_files
+
+    except Exception as e:
+        logger.error(f"S3에서 파일 목록을 가져오는 중 오류 발생: {str(e)}")
+        return []
 
 
 def main(input_s3_path, output_s3_path, aws_access_key, aws_secret_key, start_date, end_date):
     bucket_name = input_s3_path.split('/')[2]
-
-    meta_target_prefix = f"{input_s3_path.replace(f's3a://{bucket_name}/', '')}metadata/"
-    logger.info(f"처리 대상 S3 경로: {meta_target_prefix}")
-    meta_parquet_files = list_s3_parquet_files(bucket_name, meta_target_prefix, aws_access_key, aws_secret_key)
-
-    if not meta_parquet_files:
-        logger.warning("metadata 경로에 parquet 파일이 없습니다.")
-        return
-
-    for file_path in meta_parquet_files:
-        process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key, meta=True)
+    spark = get_spark_session(aws_access_key, aws_secret_key)
     
-    # 주 단위 날짜 생성
-    date_range = pd.date_range(start=start_date, end=end_date, freq='7D').strftime("%y%m%d")
+    try:
+        # Meta 파일 처리
+        meta_target_prefix = f"{input_s3_path.replace(f's3a://{bucket_name}/', '')}metadata/"
+        logger.info(f"처리 대상 S3 경로: {meta_target_prefix}")
+        meta_parquet_files = list_s3_parquet_files(bucket_name, meta_target_prefix, aws_access_key, aws_secret_key)
 
-    for date in date_range:
-        target_prefix = f"{input_s3_path.replace(f's3a://{bucket_name}/', '')}{date}/region_data/"
-        logger.info(f"처리 대상 S3 경로: {target_prefix}")
+        if not meta_parquet_files:
+            logger.warning("metadata 경로에 parquet 파일이 없습니다.")
+        else:
+            for file_path in meta_parquet_files:
+                process_parquet_file(spark, file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key, meta=True)
 
-        parquet_files = list_s3_parquet_files(bucket_name, target_prefix, aws_access_key, aws_secret_key)
+        # 주 단위 날짜 생성
+        date_range = pd.date_range(start=start_date, end=end_date, freq='7D').strftime("%y%m%d")
 
-        if not parquet_files:
-            logger.warning(f"{date} - 처리할 parquet 파일이 없습니다.")
-            continue
+        for date in date_range:
+            target_prefix = f"{input_s3_path.replace(f's3a://{bucket_name}/', '')}{date}/region_data/"
+            logger.info(f"처리 대상 S3 경로: {target_prefix}")
 
-        for file_path in parquet_files:
-            process_parquet_file(file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key, meta=False)
+            parquet_files = list_s3_parquet_files(bucket_name, target_prefix, aws_access_key, aws_secret_key)
 
+            if not parquet_files:
+                logger.warning(f"{date} - 처리할 parquet 파일이 없습니다.")
+                continue
+
+            for file_path in parquet_files:
+                process_parquet_file(spark, file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key, meta=False)
+    finally:
+        # Spark 세션 종료
+        spark.stop()
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -306,5 +327,4 @@ if __name__ == "__main__":
     args = parser.parse_args()
     main(args.input_s3_path, args.output_s3_path, args.aws_access_key, args.aws_secret_key, args.start_date, args.end_date)
 
-    # Spark 세션 종료
-    spark.stop()
+    

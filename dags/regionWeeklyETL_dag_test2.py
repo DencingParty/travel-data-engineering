@@ -41,21 +41,37 @@ def filter_by_date_region(dir1="aihub", dir2="2023", start_date="2023-06-04", en
         dataset_path = os.path.join(base_path, dataset)
         if not dataset.endswith('.parquet'):
             continue
+
         try:
             df = pd.read_parquet(dataset_path)
             df_name = dataset.replace(".parquet", "")
+
             if df.empty:
                 continue
+
             ymd_columns = [col for col in df.columns if col.endswith('YMD') and "START" not in col]
+            min_columns = [col for col in df.columns if col.endswith('MIN')]
+            
             if not ymd_columns:
                 region_dfs[df_name] = df
                 continue
+            
             for ymd_col in ymd_columns:
-                df[ymd_col] = pd.to_datetime(df[ymd_col], errors="coerce")
+                df[ymd_col] = pd.to_datetime(df[ymd_col], format="%Y-%m-%d", errors="coerce") \
+                    .dt.floor("ms") \
+                    .astype("datetime64[ms]")  # ns -> ms 변환 : ns 단위를 spark가 읽지를 못해서 변경
+
+            for min_col in min_columns:
+                df[min_col] = pd.to_datetime(df[min_col], format="%H:%M:%S", errors="coerce") \
+                     .dt.floor("ms") \
+                     .astype("datetime64[ms]")
+            
             filtered_df = df[(df[ymd_columns[0]] >= start_date) & (df[ymd_columns[0]] <= end_date)]
             region_dfs[df_name] = filtered_df
+
         except Exception as e:
             logger.error(f"Error processing file {dataset}: {e}")
+
     return region_dfs
 
 # S3 업로드 함수
@@ -105,10 +121,12 @@ def upload_to_s3(data, start_date, is_gps=False):
 )
 def region_weekly_etl_dag2():
     @task
-    def region_weekly_extract_dag(execution_date=None):
+    def region_weekly_extract_dag(data_interval_start=None):
         # 실행 주기 기반으로 데이터 범위 설정
-        start_date = execution_date.strftime("%Y-%m-%d")
-        end_date = (execution_date + timedelta(days=6)).strftime("%Y-%m-%d")
+        # start_date = execution_date.strftime("%Y-%m-%d")
+        start_date = data_interval_start.strftime("%Y-%m-%d")
+        # end_date = (execution_date + timedelta(days=6)).strftime("%Y-%m-%d")
+        end_date = (data_interval_start + timedelta(days=6)).strftime("%Y-%m-%d")
         # 데이터 필터링
         region_data = filter_by_date_region("aihub", "2023", start_date, end_date)
         # 필터링된 데이터 S3 업로드
@@ -145,7 +163,7 @@ def region_weekly_etl_dag2():
             },
             jars="/opt/spark/jars/hadoop-aws-3.3.2.jar,/opt/spark/jars/aws-java-sdk-bundle-1.11.901.jar",
         )
-        return spark_submit_task.execute(context=None)
+        return spark_submit_task.execute(context={})
 
     region_weekly_extract_dag() >> trigger_spark_job()
 
