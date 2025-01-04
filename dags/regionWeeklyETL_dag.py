@@ -1,12 +1,13 @@
 from airflow.decorators import task, dag
 from airflow.hooks.base import BaseHook
-from airflow.providers.amazon.aws.hooks.base_aws import AwsBaseHook
+from airflow.models import Variable
 from datetime import datetime, timedelta
 import boto3
 import pandas as pd
 import os
 import logging
 from io import BytesIO
+from pytz import utc
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
@@ -14,7 +15,22 @@ logger = logging.getLogger(__name__)
 
 # S3 설정
 S3_BUCKET_NAME = "travel-de-storage"
-S3_FOLDER = "raw-data-test-weekly"
+S3_FOLDER = "raw-data-jh_test"
+
+# 테스트 모드 설정
+TEST_MODE = True  # True면 10분 간격, False면 주간 실행
+
+# 스케줄 간격 설정
+schedule_interval = "*/10 * * * *" if TEST_MODE else "@weekly"
+
+# 초기 데이터 시작 시점
+START_DATE = datetime(2023, 6, 11)
+
+# 강제로 현재 시간을 2023년 6월 11일로 설정 (Variable 사용)
+CURRENT_DATE = Variable.get("current_date", default_var="2023-06-11")
+
+# 최초 실행 플래그 변수명
+INITIAL_RUN_FLAG = "initial_run_completed"
 
 # S3 클라이언트 생성 함수
 def get_s3_client():
@@ -25,6 +41,28 @@ def get_s3_client():
         region_name=aws_conn.extra_dejson.get("region_name", "ap-northeast-2")
     )
     return session.client("s3")
+
+# 초기 S3 데이터 삭제 함수 (230604 이후 폴더 삭제)
+def clean_s3_folder(bucket_name, prefix, start_date="2023-06-04"):
+    s3_client = get_s3_client()
+    start_date = datetime.strptime(start_date, "%Y-%m-%d")
+
+    objects = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
+
+    if 'Contents' in objects:
+        for obj in objects['Contents']:
+            key = obj['Key']
+            folder_date_str = key.split('/')[1]  # '230604' 추출
+            folder_date = datetime.strptime(folder_date_str, "%y%m%d")
+
+            if folder_date >= start_date:
+                try:
+                    s3_client.delete_object(Bucket=bucket_name, Key=key)
+                    logger.info(f"Deleted {key} from S3")
+                except Exception as e:
+                    logger.error(f"Failed to delete {key}: {e}")
+    else:
+        logger.info("No files found for cleanup.")
 
 # Region 데이터 필터링 함수
 def filter_by_date_region(dir1="aihub", dir2="2023", start_date="2023-06-04", end_date="2023-06-10"):
@@ -106,18 +144,32 @@ def upload_to_s3(data, start_date, is_gps=False):
         "retries": 1,
         "retry_delay": timedelta(minutes=5),
     },
-    schedule_interval="@weekly",  # 매주 실행
-    start_date=datetime(2023, 6, 4),  # 스케쥴링 첫 실행 날짜
-    end_date=datetime(2023, 12, 31),  # 스케쥴링 종료 날짜
-    catchup=True,
+    schedule_interval=schedule_interval,  # 동적 스케줄링
+    start_date=START_DATE,  # 스케쥴링 첫 실행 날짜
+    catchup=False,
     description="Weekly ETL to filter region data and upload to S3",
 )
 def region_weekly_extract_dag():
+
+    # 초기 S3 데이터 클리닝 태스크
+    @task
+    def clean_existing_s3_data():
+        initial_run = Variable.get(INITIAL_RUN_FLAG, default_var=None)
+        if not initial_run:
+            logger.info("Starting S3 data clean-up...")
+            clean_s3_folder(S3_BUCKET_NAME, S3_FOLDER, start_date="2023-06-04")
+            Variable.set(INITIAL_RUN_FLAG, True)
+            logger.info("S3 data clean-up completed.")
+        else:
+            logger.info("Skipping S3 clean-up. Initial run already completed.")
+
     @task
     def process_region_data(execution_date=None):
-        # 실행 주기 기반으로 데이터 범위 설정
-        start_date = execution_date.strftime("%Y-%m-%d")
-        end_date = (execution_date + timedelta(days=6)).strftime("%Y-%m-%d")
+        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
+        start_date = (START_DATE + timedelta(weeks=(forced_date - START_DATE).days // 7)).strftime("%Y-%m-%d")
+        end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=6)).strftime("%Y-%m-%d")
+
+        logger.info(f"Processing data for period: {start_date} to {end_date}")
 
         # 데이터 필터링
         region_data = filter_by_date_region("aihub", "2023", start_date, end_date)
@@ -125,8 +177,15 @@ def region_weekly_extract_dag():
         # 필터링된 데이터 S3 업로드
         if region_data:
             upload_to_s3(region_data, start_date, is_gps=False)  # is_gps를 True/False로 설정
+
+    # Variable 자동 업데이트 태스크
+    @task
+    def update_variable():
+        next_date = (datetime.strptime(CURRENT_DATE, "%Y-%m-%d") + timedelta(weeks=1)).strftime("%Y-%m-%d")
+        Variable.set("current_date", next_date)
+        logger.info(f"Updated current_date to {next_date}")
     
-    process_region_data()
+    clean_existing_s3_data() >> process_region_data() >> update_variable()
 
 dag = region_weekly_extract_dag()
 
