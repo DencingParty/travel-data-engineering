@@ -24,7 +24,7 @@ TEST_MODE = True  # True면 10분 간격, False면 주간 실행
 schedule_interval = "*/10 * * * *" if TEST_MODE else "@weekly"
 
 # 초기 데이터 시작 시점
-START_DATE = datetime(2023, 6, 11)
+START_DATE = datetime(2023, 6, 4)
 
 # 강제로 현재 시간을 2023년 6월 11일로 설정 (Variable 사용)
 CURRENT_DATE = Variable.get("current_date", default_var="2023-06-11")
@@ -175,7 +175,7 @@ def region_weekly_extract_dag():
     @task
     def process_region_data(execution_date=None):
         forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
-        start_date = (START_DATE + timedelta(weeks=(forced_date - START_DATE).days // 7)).strftime("%Y-%m-%d")
+        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%Y-%m-%d")
         end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=6)).strftime("%Y-%m-%d")
 
         logger.info(f"Processing data for period: {start_date} to {end_date}")
