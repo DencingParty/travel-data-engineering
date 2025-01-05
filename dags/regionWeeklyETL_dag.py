@@ -29,8 +29,7 @@ START_DATE = datetime(2023, 6, 4)
 # 강제로 현재 시간을 2023년 6월 11일로 설정 (Variable 사용)
 CURRENT_DATE = Variable.get("current_date", default_var="2023-06-11")
 
-# 최초 실행 플래그 변수명
-INITIAL_RUN_FLAG = "initial_run_completed"
+RUN_STATE_FLAG = "dag_run_state"  # 통합 Variable
 
 # S3 클라이언트 생성 함수
 def get_s3_client():
@@ -159,18 +158,34 @@ def upload_to_s3(data, start_date, is_gps=False):
     description="Weekly ETL to filter region data and upload to S3",
 )
 def region_weekly_extract_dag():
-
-    # 초기 S3 데이터 클리닝 태스크
     @task
-    def clean_existing_s3_data():
-        initial_run = Variable.get(INITIAL_RUN_FLAG, default_var=None)
-        if initial_run.lower() == "false":
+    def reset_variables_and_clean_s3(**kwargs):
+        """
+        최초 DAG 실행 또는 강제 초기화 시 S3 데이터 클리닝 및 Variable 초기화 수행.
+        """
+        dag_run = kwargs.get("dag_run")
+        run_state = Variable.get(RUN_STATE_FLAG, default_var="pending")
+
+        # 수동 트리거 시 run_state가 'force_reset'이 아니면 초기화 건너뛰기
+        if dag_run and dag_run.run_type == "manual" and run_state != "force_reset":
+            logger.info("DAG manually triggered. Skipping S3 clean-up.")
+            return
+
+        # 최초 실행(pending) 또는 강제 초기화(force_reset)인 경우 초기화 수행
+        if run_state in ["pending", "force_reset"]:
+            logger.info("Performing S3 clean-up and Variable reset...")
+
+            # Variable 초기화
+            Variable.set(RUN_STATE_FLAG, "done")
+            Variable.set("current_date", "2023-06-11")
+            logger.info("Variables have been reset.")
+
+            # S3 데이터 클리닝
             logger.info("Starting S3 data clean-up...")
             clean_s3_folder(S3_BUCKET_NAME, S3_FOLDER, start_date="2023-06-04")
-            Variable.set(INITIAL_RUN_FLAG, True)
-            logger.info("S3 data clean-up completed.")
+            logger.info("S3 clean-up completed.")
         else:
-            logger.info("Skipping S3 clean-up. Initial run already completed.")
+            logger.info("S3 clean-up skipped. DAG has already run before.")
 
     @task
     def process_region_data(execution_date=None):
@@ -193,8 +208,9 @@ def region_weekly_extract_dag():
         next_date = (datetime.strptime(CURRENT_DATE, "%Y-%m-%d") + timedelta(weeks=1)).strftime("%Y-%m-%d")
         Variable.set("current_date", next_date)
         logger.info(f"Updated current_date to {next_date}")
-    
-    clean_existing_s3_data() >> process_region_data() >> update_variable()
+
+    # DAG 실행 순서
+    reset_variables_and_clean_s3() >> process_region_data() >> update_variable()
 
 dag = region_weekly_extract_dag()
 
