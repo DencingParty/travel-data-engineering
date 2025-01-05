@@ -281,6 +281,42 @@ def process_parquet_file(spark, file_path, output_s3_path, bucket_name, aws_acce
     개별 Parquet 파일 transform 및 단일 파일로 S3 저장
     """
     try:
+        # 파일명 추출 및 저장 경로 설정
+        file_name = os.path.basename(file_path)
+        processed_file_name = file_name.replace('.parquet', '_snappy.parquet')
+
+        # S3 클라이언트 초기화  
+        s3 = boto3.client('s3',
+                            aws_access_key_id=aws_access_key,
+                            aws_secret_access_key=aws_secret_key)
+
+        if meta:
+            output_dir = f"{output_s3_path}metadata/"
+
+
+
+            # output_dir 내부에 동일한 파일이 이미 존재하는지 확인
+            existing_files = s3.list_objects_v2(
+                Bucket=bucket_name,
+                Prefix=output_dir.replace(f's3a://{bucket_name}/', '')
+            )
+
+            if 'Contents' in existing_files:
+                # 파일 이름 매칭 확인
+                existing_file_names = [
+                    os.path.basename(obj['Key'])
+                    for obj in existing_files['Contents']
+                ]
+                if processed_file_name in existing_file_names:
+                    logger.info(f"{processed_file_name}는 이미 {output_dir} 경로에 존재합니다. 작업을 스킵합니다.")
+                    return  # 작업 스킵
+        
+        else:
+            file_prefix = '/'.join(file_path.split('/')[-3:-1])  # 예: 230521/region_data
+            output_dir = f"{output_s3_path}{file_prefix}/"
+
+        temp_output_path = f"{output_dir}temp/"
+
         # 파일 읽기
         logger.info(f"{file_path} 읽는 중...")
         
@@ -329,23 +365,31 @@ def process_parquet_file(spark, file_path, output_s3_path, bucket_name, aws_acce
         logger.info(f"{file_path} - 변환 후 데이터 확인:")
         df.show(5, truncate=False)
 
-        # 파일명 추출 및 저장 경로 설정
-        file_name = os.path.basename(file_path)
-        file_prefix = '/'.join(file_path.split('/')[-3:-1])  # 230521/region_data 추출
-        processed_file_name = file_name.replace('.parquet', '_snappy.parquet')
+        # # 파일명 추출 및 저장 경로 설정
+        # file_name = os.path.basename(file_path)
+        # file_prefix = '/'.join(file_path.split('/')[-3:-1])  # 230521/region_data 추출
+        # processed_file_name = file_name.replace('.parquet', '_snappy.parquet')
 
-        if meta == True:
-            output_dir = f"{output_s3_path}metadata/"
-        else:
-            output_dir = f"{output_s3_path}{file_prefix}/"
-        temp_output_path = f"{output_dir}temp/"
+        # if meta == True:
+        #     output_dir = f"{output_s3_path}metadata/"
+        # else:
+        #     output_dir = f"{output_s3_path}{file_prefix}/"
+        # temp_output_path = f"{output_dir}temp/"
 
-        # 저장된 디렉터리에서 파일을 찾아 단일 파일로 복사
-        s3 = boto3.client('s3',
-                          aws_access_key_id=aws_access_key,
-                          aws_secret_access_key=aws_secret_key)
-        existing_files = s3.list_objects_v2(Bucket=bucket_name, Prefix=output_dir.replace(f's3a://{bucket_name}/', ''))
+        # # 저장된 디렉터리에서 파일을 찾아 단일 파일로 복사
+        # s3 = boto3.client('s3',
+        #                   aws_access_key_id=aws_access_key,
+        #                   aws_secret_access_key=aws_secret_key)
+        existing_files = s3.list_objects_v2(
+                Bucket=bucket_name, 
+                Prefix=output_dir.replace(f's3a://{bucket_name}/', '')
+            )
 
+        # existing_files = s3.list_objects_v2(
+        #         Bucket=bucket_name,
+        #         Prefix=output_dir.replace(f's3a://{bucket_name}/', '')
+        #     )
+        
         # snappy 파일을 snappy-backup/로 이동
         for obj in existing_files.get('Contents', []):
             if obj['Key'].endswith('_snappy.parquet'):
