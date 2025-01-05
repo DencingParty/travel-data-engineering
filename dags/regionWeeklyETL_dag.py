@@ -47,20 +47,29 @@ def clean_s3_folder(bucket_name, prefix, start_date="2023-06-04"):
     s3_client = get_s3_client()
     start_date = datetime.strptime(start_date, "%Y-%m-%d")
 
+    # S3에서 prefix 경로 하위 객체 목록 가져오기
     objects = s3_client.list_objects_v2(Bucket=bucket_name, Prefix=prefix)
 
     if 'Contents' in objects:
         for obj in objects['Contents']:
             key = obj['Key']
-            folder_date_str = key.split('/')[1]  # '230604' 추출
-            folder_date = datetime.strptime(folder_date_str, "%y%m%d")
 
-            if folder_date >= start_date:
-                try:
+            # 'metadata' 폴더 무시
+            folder_date_str = key.split('/')[1]
+            if folder_date_str == "metadata":
+                logger.info(f"Skipping metadata folder: {key}")
+                continue  # metadata 폴더는 스킵
+
+            try:
+                # 날짜 변환 시도
+                folder_date = datetime.strptime(folder_date_str, "%y%m%d")
+                
+                # 지정된 start_date 이후 데이터 삭제
+                if folder_date >= start_date:
                     s3_client.delete_object(Bucket=bucket_name, Key=key)
                     logger.info(f"Deleted {key} from S3")
-                except Exception as e:
-                    logger.error(f"Failed to delete {key}: {e}")
+            except ValueError:
+                logger.warning(f"Skipping non-date folder: {folder_date_str}")
     else:
         logger.info("No files found for cleanup.")
 
@@ -155,7 +164,7 @@ def region_weekly_extract_dag():
     @task
     def clean_existing_s3_data():
         initial_run = Variable.get(INITIAL_RUN_FLAG, default_var=None)
-        if not initial_run:
+        if initial_run.lower() == "false":
             logger.info("Starting S3 data clean-up...")
             clean_s3_folder(S3_BUCKET_NAME, S3_FOLDER, start_date="2023-06-04")
             Variable.set(INITIAL_RUN_FLAG, True)
