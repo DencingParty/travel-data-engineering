@@ -1,161 +1,3 @@
-# from airflow.decorators import task, dag
-# from airflow.hooks.base import BaseHook
-# from airflow.providers.apache.spark.operators.spark_submit import SparkSubmitOperator
-# from airflow.providers.amazon.aws.hooks.base_aws import AwsBaseHook
-# from datetime import datetime, timedelta
-# import boto3
-# import pandas as pd
-# import pyarrow.parquet as pq
-# from io import BytesIO
-# import os
-# import logging
-
-
-
-# # 로깅 설정
-# logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
-# logger = logging.getLogger(__name__)
-
-
-# # 기본 경로 설정
-# BASE_PATH = "/opt/airflow/data"
-
-# # S3 설정
-# S3_BUCKET_NAME = "travel-de-storage"
-# S3_FOLDER = "raw-data-test-weekly"
-
-# # S3 클라이언트 생성 함수
-# def get_s3_client():
-#     aws_conn = BaseHook.get_connection("AWS_CONNECTION_ID")
-#     session = boto3.Session(
-#         aws_access_key_id=aws_conn.login,
-#         aws_secret_access_key=aws_conn.password,
-#         region_name=aws_conn.extra_dejson.get("region_name", "ap-northeast-2")
-#     )
-#     return session.client("s3")
-
-# def set_filtering_date(start_date="2023-06-04", end_date="2023-12-31", freq="7D"):
-#     weekly_dict = {
-#         f"week_{i+1}": {
-#             "start_date": str(start.date()),
-#             "end_date": str((start + pd.Timedelta(days=6)).date())
-#         }
-#         for i, start in enumerate(pd.date_range(start=start_date, end=end_date, freq=freq))
-#     }
-
-#     return weekly_dict
-
-# # Region 데이터 필터링 함수
-# def filter_by_date_region(dir1="aihub", dir2="2022", start_date="2022-01-02", end_date="2022-01-08"):
-#     base_path = os.path.join("/opt/airflow/data", dir1, dir2, "total_combined", "region_data_parquet")
-#     dataset_list = os.listdir(base_path)
-#     region_dfs = {}
-
-#     for dataset in dataset_list:
-#         dataset_path = os.path.join(base_path, dataset)
-#         if not dataset.endswith('.parquet'):
-#             continue
-
-#         try:
-#             df = pd.read_parquet(dataset_path)
-#             df_name = dataset.replace(".parquet", "")
-#             if df.empty:
-#                 continue
-
-#             ymd_columns = [col for col in df.columns if col.endswith('YMD') and "START" not in col]
-#             min_columns = [col for col in df.columns if col.endswith('MIN')]
-
-#             if not ymd_columns:
-#                 region_dfs[df_name] = df
-#                 continue
-
-#             if len(ymd_columns) > 1:
-#                 ymd_columns = [ymd_columns[-1]]
-
-#             for ymd_col in ymd_columns:
-#                 df[ymd_col] = pd.to_datetime(df[ymd_col], errors="coerce").dt.floor("ms").astype("datetime64[ms]") # ns -> ms 변환 : ns 단위를 spark가 읽지를 못해서 변경
-
-#             for min_col in min_columns:
-#                 df[min_col] = pd.to_datetime(df[min_col], errors="coerce").dt.floor("ms").astype("datetime64[ms]")
-
-#             filtered_df = df[(df[ymd_columns[0]] >= start_date) & (df[ymd_columns[0]] <= end_date)]
-#             region_dfs[df_name] = filtered_df
-
-#         except Exception as e:
-#             logger.error(f"Error processing file {dataset}: {e}")
-
-#     return region_dfs
-
-# # S3 업로드 함수
-# def upload_to_s3(data, start_date, is_gps=False):
-#     s3_client = get_s3_client()
-#     transformed_key = datetime.strptime(start_date, "%Y-%m-%d").strftime("%y%m%d")
-#     base_path = f"{transformed_key}/gps_data" if is_gps else f"{transformed_key}/region_data"
-    
-#     try:
-#         logger.info(f"Starting S3 upload for week starting {start_date} ({base_path})")
-
-#         for file_name, df in data.items():
-#             if is_gps:
-#                 file_name_key = f"gps_data_{transformed_key}"
-#                 s3_key = f"{S3_FOLDER}/{base_path}/{file_name_key}.parquet"
-#             else:
-#                 if "tc_" in file_name or "tn_activity_his_" in file_name:
-#                     file_name_key = f"{file_name}"
-#                     s3_key = f"{S3_FOLDER}/metadata/{file_name_key}.parquet"
-#                 else:
-#                     file_name_key = f"{file_name}_{transformed_key}"
-#                     s3_key = f"{S3_FOLDER}/{base_path}/{file_name_key}.parquet"
-
-#             # DataFrame을 Parquet로 변환
-#             parquet_buffer = BytesIO()
-#             df.to_parquet(parquet_buffer, engine='pyarrow', index=False, coerce_timestamps='ms')
-
-#             # S3 업로드
-#             s3_client.put_object(
-#                 Bucket=S3_BUCKET_NAME,
-#                 Key=s3_key,
-#                 Body=parquet_buffer.getvalue()
-#             )
-
-#         logger.info(f"Successfully uploaded all files for week starting {start_date}")
-
-#     except Exception as e:
-#         logger.error(f"Error during S3 upload for week starting {start_date}: {e}")
-
-# # DAG 정의
-# @dag(
-#     default_args={
-#         "owner": "airflow",
-#         "depends_on_past": False,
-#         "retries": 1,
-#         "retry_delay": timedelta(minutes=5),
-#     },
-#     schedule_interval='@weekly',
-#     start_date=datetime(2023, 6, 4),
-#     catchup=True,
-#     description="Extract Weekly Region Data to S3"
-# )
-
-# def region_weekly_extract_dag():
-#     @task
-#     def process_region_data():
-#         weekly_dict = set_filtering_date(start_date="2023-06-04", end_date="2023-12-31", freq="7D")
-#         for week, date_range in weekly_dict.items():
-#             start_date = date_range["start_date"]
-#             end_date = date_range["end_date"]
-
-#             # Filter data for the week
-#             region_data = filter_by_date_region("aihub", "2023", start_date, end_date)
-
-#             # Upload filtered data to S3
-#             if region_data:
-#                 upload_to_s3(region_data, start_date)
-
-#     process_region_data()
-
-# dag = region_weekly_extract_dag()
-
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import col
 from pyspark.sql.utils import AnalysisException
@@ -178,8 +20,6 @@ def get_spark_session(aws_access_key, aws_secret_key):
     """
     spark = SparkSession.builder \
         .appName("Transform Region Data") \
-        .config("spark.sql.legacy.parquet.int64AsTimestampMillis", "false") \
-        .config("spark.sql.legacy.parquet.nanosAsLong", "true") \
         .config("spark.hadoop.fs.s3a.access.key", aws_access_key) \
         .config("spark.hadoop.fs.s3a.secret.key", aws_secret_key) \
         .config("spark.hadoop.fs.s3a.endpoint", "s3.amazonaws.com") \
@@ -254,27 +94,121 @@ def preprocess_data(df: DataFrame, file_name: str) -> DataFrame:
     if base_name in ["tn_adv_consume", "tn_companion_info", "tn_tour_photo"]:
         logger.info(f"{file_name} 사용하지 않는 테이블로 삭제 처리.")
         return None  # None 반환 시 저장하지 않음
-    
-    # 필요한 컬럼만 남기기
-    if base_name in column_selection:
-        columns_to_keep = column_selection[base_name]
-        existing_columns = [col for col in columns_to_keep if col in df.columns]
-        
-        if not existing_columns:
-            logger.warning(f"{file_name}에서 필요한 컬럼이 존재하지 않습니다.")
-            return None
-        
-        df = df.select(*existing_columns)
-        logger.info(f"{file_name}에서 {len(existing_columns)}개 컬럼 유지, 나머지 컬럼 제거.")
 
-        # 결측치 처리
-        before_drop = df.count()
-        df = df.na.drop()
-        after_drop = df.count()
-        dropped_rows = before_drop - after_drop
-        logger.info(f"{file_name}에서 {before_drop}개 행 중 {dropped_rows}개의 결측치 행 제거.")
+    # 메타데이터 (코드A, 코드B, 시군구코드)인 경우, 전처리 작업 스킵
+    if base_name.startswith("tc"):
+        return df
+
+    # 필요한 컬럼만 남기기
+    columns_to_keep = column_selection.get(base_name, [])
+    existing_columns = [col for col in columns_to_keep if col in df.columns]
+        
+    if not existing_columns:
+        logger.warning(f"{file_name}에서 필요한 컬럼이 존재하지 않습니다.")
+        return None
+    
+    df = df.select(*existing_columns)
+    logger.info(f"{file_name}에서 {len(existing_columns)}개 컬럼 유지, 나머지 컬럼 제거.")
+
+    # 결측치 처리
+    before_drop = df.count()
+    df = df.na.drop()
+    after_drop = df.count()
+    dropped_rows = before_drop - after_drop
+    logger.info(f"{file_name}에서 {before_drop}개 행 중 {dropped_rows}개의 결측치 행 제거.")
 
     return df
+
+def check_file_is_in_directory(processed_file_name, bucket_name, output_dir, aws_access_key, aws_secret_key):
+    
+    s3 = boto3.client('s3', aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
+
+    # output_dir 내부에 동일한 파일이 이미 존재하는지 확인
+    existing_files = s3.list_objects_v2(
+        Bucket=bucket_name,
+        Prefix=output_dir.replace(f's3a://{bucket_name}/', '')
+    )
+
+    if 'Contents' in existing_files:
+        # 파일 이름 매칭 확인
+        existing_file_names = [os.path.basename(obj['Key']) for obj in existing_files['Contents']]
+
+        if processed_file_name in existing_file_names:
+            logger.info(f"{processed_file_name}는 이미 {output_dir} 경로에 존재합니다. 작업을 스킵합니다.")
+            return True  # 작업 스킵
+    return False
+
+
+def backup_existing_files(s3, bucket_name, output_dir, backup_dir):
+    """
+    기존 _snappy.parquet 파일을 백업 디렉토리로 이동.
+    """
+    # output_dir에 저장된 기존 파일 리스트 가져오기
+    existing_files = s3.list_objects_v2(Bucket=bucket_name, Prefix=output_dir)
+
+    for obj in existing_files.get('Contents', []):
+        # _snappy.parquet 파일 필터링
+        if obj['Key'].endswith('_snappy.parquet'):
+            clean_key = obj['Key']  # 현재 파일의 경로
+            backup_key = f"{backup_dir}{os.path.basename(obj['Key'])}" # 백업 디렉토리에 저장할 경로
+
+            # 파일 복사 (현재 경로 → 백업 디렉토리)
+            s3.copy_object(
+                Bucket=bucket_name,
+                CopySource={'Bucket': bucket_name, 'Key': clean_key}, # 원본 파일 경로
+                Key=backup_key # 복사 대상 경로
+            )
+            logger.info(f" (1) {backup_key}에 snappy 파일 백업 완료")
+            # 원본 삭제
+            s3.delete_object(Bucket=bucket_name, Key=clean_key)
+
+
+def merge_and_store_files(s3, bucket_name, temp_dir, output_dir, processed_file_name):
+    """
+    Spark 출력 파일(part-*)을 최종 _snappy.parquet로 병합 및 저장.
+    """
+    # temp_dir에 저장된 Spark 출력 파일 리스트
+    uploaded_files = s3.list_objects_v2(Bucket=bucket_name, Prefix=temp_dir)
+
+    for obj in uploaded_files.get('Contents', []):
+        # Spark의 출력 파일(part-)만 필터링
+        if 'part-' in os.path.basename(obj['Key']) and obj['Key'].endswith('.parquet'):
+            clean_key = obj['Key'] # 현재 파일의 경로
+            final_output_path = f"{output_dir}{processed_file_name}" # 최종 저장 경로
+
+            # 파일 복사 (현재 경로 → 최종 디렉토리)
+            s3.copy_object(
+                Bucket=bucket_name,
+                CopySource={'Bucket': bucket_name, 'Key': clean_key},  # 원본 파일 경로
+                Key=final_output_path # 복사 대상 경로
+            )
+            logger.info(f" (2) {final_output_path}에 최종 저장 완료!")
+
+            # 원본 part- 파일 삭제
+            s3.delete_object(Bucket=bucket_name, Key=clean_key)
+            logger.info(f" (2) {clean_key} part- 파일 삭제 완료")
+
+
+def restore_backup_files(s3, bucket_name, backup_dir, output_dir):
+    """
+    백업된 _snappy.parquet 파일을 원래 위치로 복원.
+    """
+    # backup_dir에 저장된 백업 파일 리스트
+    backup_files = s3.list_objects_v2(Bucket=bucket_name, Prefix=backup_dir)
+    for obj in backup_files.get('Contents', []):
+        clean_key = obj['Key'] # 현재 백업 파일의 경로
+        restore_key = f"{output_dir}{os.path.basename(obj['Key'])}" # 복원 대상 경로
+
+        # 파일 복사 (백업 디렉토리 → 원래 디렉토리)
+        s3.copy_object(
+            Bucket=bucket_name,
+            CopySource={'Bucket': bucket_name, 'Key': clean_key}, # 원본 파일 경로
+            Key=restore_key # 복사 대상 경로
+        )
+        logger.info(f" (3) {backup_dir}에서 {restore_key}로 {clean_key} 파일 복사 완료")
+        # 백업 디렉토리에서 원본 파일 삭제
+        s3.delete_object(Bucket=bucket_name, Key=clean_key)
+
 
 def process_parquet_file(spark, file_path, output_s3_path, bucket_name, aws_access_key, aws_secret_key, meta=False):
     """
@@ -286,72 +220,30 @@ def process_parquet_file(spark, file_path, output_s3_path, bucket_name, aws_acce
         processed_file_name = file_name.replace('.parquet', '_snappy.parquet')
 
         # S3 클라이언트 초기화  
-        s3 = boto3.client('s3',
-                            aws_access_key_id=aws_access_key,
-                            aws_secret_access_key=aws_secret_key)
+        s3 = boto3.client('s3', aws_access_key_id=aws_access_key, aws_secret_access_key=aws_secret_key)
 
         if meta:
             output_dir = f"{output_s3_path}metadata/"
-
-
-
-            # output_dir 내부에 동일한 파일이 이미 존재하는지 확인
-            existing_files = s3.list_objects_v2(
-                Bucket=bucket_name,
-                Prefix=output_dir.replace(f's3a://{bucket_name}/', '')
-            )
-
-            if 'Contents' in existing_files:
-                # 파일 이름 매칭 확인
-                existing_file_names = [
-                    os.path.basename(obj['Key'])
-                    for obj in existing_files['Contents']
-                ]
-                if processed_file_name in existing_file_names:
-                    logger.info(f"{processed_file_name}는 이미 {output_dir} 경로에 존재합니다. 작업을 스킵합니다.")
-                    return  # 작업 스킵
+            
+            # 파일 존재 여부 확인
+            if check_file_is_in_directory(processed_file_name, bucket_name, output_dir, aws_access_key, aws_secret_key):
+                return  # 파일이 이미 존재하면 작업 종료
         
         else:
             file_prefix = '/'.join(file_path.split('/')[-3:-1])  # 예: 230521/region_data
             output_dir = f"{output_s3_path}{file_prefix}/"
-
-        temp_output_path = f"{output_dir}temp/"
-
+        
+        backup_dir = f"{output_dir}snappy-backup/"
+        temp_dir = f"{output_dir}temp/"
+        
         # 파일 읽기
         logger.info(f"{file_path} 읽는 중...")
         
         df = spark.read.parquet(file_path)
         file_name = os.path.basename(file_path)
         
-        # 원본 데이터 확인
-        logger.info(f"{file_path} - 원본 데이터 확인:")
-        df.show(5, truncate=False)
-
-        if meta == False:
-            # 데이터 전처리 추가
-            df = preprocess_data(df, file_name)
-        else:
-            if "tn_activity_his" in file_name:
-                base_name = "_".join(file_name.split("_")[:3]) 
-                logger.info(f"{base_name} 파일 전처리 시작...")
-
-                # 필요한 컬럼만 남기기
-                if base_name in column_selection:
-                    columns_to_keep = column_selection[base_name]
-                    existing_columns = [col for col in columns_to_keep if col in df.columns]
-                    if not existing_columns:
-                        logger.warning(f"{file_name}에서 필요한 컬럼이 존재하지 않습니다.")
-                        return None
-                    
-                    df = df.select(*existing_columns)
-                    logger.info(f"{file_name}에서 {len(existing_columns)}개 컬럼 유지, 나머지 컬럼 제거.")
-
-                    # 결측치 처리
-                    before_drop = df.count()
-                    df = df.na.drop()
-                    after_drop = df.count()
-                    dropped_rows = before_drop - after_drop
-                    logger.info(f"{file_name}에서 {before_drop}개 행 중 {dropped_rows}개의 결측치 행 제거.")
+        # 데이터 전처리
+        df = preprocess_data(df, file_name)
 
         # 데이터가 없거나 비어있는 경우 처리 건너뜀
         if df is None or df.rdd.isEmpty():
@@ -365,95 +257,29 @@ def process_parquet_file(spark, file_path, output_s3_path, bucket_name, aws_acce
         logger.info(f"{file_path} - 변환 후 데이터 확인:")
         df.show(5, truncate=False)
 
-        # # 파일명 추출 및 저장 경로 설정
-        # file_name = os.path.basename(file_path)
-        # file_prefix = '/'.join(file_path.split('/')[-3:-1])  # 230521/region_data 추출
-        # processed_file_name = file_name.replace('.parquet', '_snappy.parquet')
+        # 기존 _snappy.parquet 파일을 snappy-backup/로 이동
+        backup_existing_files(s3, bucket_name, output_dir.replace(f's3a://{bucket_name}/', ''), backup_dir)
 
-        # if meta == True:
-        #     output_dir = f"{output_s3_path}metadata/"
-        # else:
-        #     output_dir = f"{output_s3_path}{file_prefix}/"
-        # temp_output_path = f"{output_dir}temp/"
-
-        # # 저장된 디렉터리에서 파일을 찾아 단일 파일로 복사
-        # s3 = boto3.client('s3',
-        #                   aws_access_key_id=aws_access_key,
-        #                   aws_secret_access_key=aws_secret_key)
-        existing_files = s3.list_objects_v2(
-                Bucket=bucket_name, 
-                Prefix=output_dir.replace(f's3a://{bucket_name}/', '')
-            )
-
-        # existing_files = s3.list_objects_v2(
-        #         Bucket=bucket_name,
-        #         Prefix=output_dir.replace(f's3a://{bucket_name}/', '')
-        #     )
+        # Spark DataFrame을 S3의 temp_dir에 병합 (기존 snappy 파일이 없는 상태)
+        logger.info(f"{temp_dir}에 데이터 병합 중...")
+        df.coalesce(1).write.mode("overwrite").parquet(temp_dir)
         
-        # snappy 파일을 snappy-backup/로 이동
-        for obj in existing_files.get('Contents', []):
-            if obj['Key'].endswith('_snappy.parquet'):
-                # s3://, s3a:// 제거
-                clean_key = obj['Key']
-                backup_key = f"{output_dir.replace(f's3a://{bucket_name}/', '')}snappy-backup/{os.path.basename(obj['Key'])}"
-                
-                # 복사 수행
-                s3.copy_object(
-                    Bucket=bucket_name,
-                    CopySource={'Bucket': bucket_name, 'Key': clean_key},
-                    Key=backup_key
-                )
-
-                # 원본 삭제 (s3:// 제거된 경로 사용)
-                s3.delete_object(Bucket=bucket_name, Key=clean_key)
-
-        # 새로운 데이터 병합 (기존 snappy 파일이 없는 상태)
-        logger.info(f"{temp_output_path}에 데이터 저장 중...")
-        df.coalesce(1).write.mode("overwrite").parquet(temp_output_path)
-        
-        # boto3에서는 's3a://' 제거
-        uploaded_files = s3.list_objects_v2(Bucket=bucket_name, Prefix=temp_output_path.replace(f's3a://{bucket_name}/', ''))
-
-        # part-로 시작하는 파일 복사 및 삭제
-        for obj in uploaded_files.get('Contents', []):
-            if 'part-' in os.path.basename(obj['Key']) and obj['Key'].endswith('.parquet'):
-                # s3://, s3a:// 제거
-                clean_key = obj['Key']
-                final_output_path = f"{output_dir.replace(f's3a://{bucket_name}/', '')}{processed_file_name}"
-
-                # 복사 수행
-                s3.copy_object(
-                    Bucket=bucket_name,
-                    CopySource={'Bucket': bucket_name, 'Key': clean_key},
-                    Key=final_output_path
-                )
-                logger.info(f"{final_output_path}에 최종 저장 완료!")
-
-                # 원본 part- 파일 삭제
-                s3.delete_object(Bucket=bucket_name, Key=clean_key)
-                logger.info(f"{clean_key} part- 파일 삭제 완료")
-
-        # 기존 snappy 파일 복원
-        backup_files = s3.list_objects_v2(
-            Bucket=bucket_name, 
-            Prefix=f"{output_dir.replace(f's3a://{bucket_name}/', '')}snappy-backup/"
+        # temp_dir에서 Spark 출력 파일(part-)을 병합하여 최종 _snappy.parquet 파일로 저장.
+        merge_and_store_files(
+            s3, bucket_name, 
+            temp_dir.replace(f's3a://{bucket_name}/', ''), 
+            output_dir.replace(f's3a://{bucket_name}/', ''), 
+            processed_file_name
         )
-        for obj in backup_files.get('Contents', []):
-            clean_key = obj['Key']
-            restore_key = f"{output_dir.replace(f's3a://{bucket_name}/', '')}{os.path.basename(obj['Key'])}"
 
-            s3.copy_object(
-                Bucket=bucket_name,
-                CopySource={'Bucket': bucket_name, 'Key': clean_key},
-                Key=restore_key
-            )
-            s3.delete_object(Bucket=bucket_name, Key=clean_key)
+        # 백업된 _snappy.parquet 파일을 원래 위치로 복원
+        restore_backup_files(s3, bucket_name, backup_dir, output_dir.replace(f's3a://{bucket_name}/', ''))
+        logger.info(f"최종 저장된 S3 경로: {output_dir}")
 
     except AnalysisException as e:
         logger.error(f"파일 읽기 실패: {file_path} - {str(e)}")
     except Exception as e:
         logger.error(f"{file_path} 처리 중 오류 발생: {str(e)}")
-
 
 
 def list_s3_parquet_files(bucket_name, prefix, aws_access_key, aws_secret_key):
