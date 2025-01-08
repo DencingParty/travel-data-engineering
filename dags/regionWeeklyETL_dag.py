@@ -115,8 +115,12 @@ def filter_by_date_region(dir1="aihub", dir2="2023", start_date="2023-06-04", en
 
             # 날짜 필터링
             if ymd_columns:
+                if df_name=="tn_traveller_master_여행객 Master":
+                    ymd_columns[0] = "TRAVEL_STATUS_END_YMD"
+                logger.info(f"{df_name}의 필터링 기준 컬럼: {ymd_columns[0]}")
                 filtered_df = df[(df[ymd_columns[0]] >= start_date) & (df[ymd_columns[0]] <= end_date)]
             else:
+                logger.info(f"{df_name}에는 YMD 컬럼이 없습니다.")
                 filtered_df = df
 
             region_dfs[df_name] = filtered_df

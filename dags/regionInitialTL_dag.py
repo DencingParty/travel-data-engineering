@@ -15,16 +15,6 @@ S3_BUCKET_NAME = "travel-de-storage"
 RAW_FOLDER = "raw-data"
 PROCESSED_FOLDER = "processed-data"
 
-# S3 클라이언트 생성
-# def get_s3_client():
-#     aws_conn = BaseHook.get_connection("AWS_CONNECTION_ID")
-#     session = boto3.Session(
-#         aws_access_key_id=aws_conn.login,
-#         aws_secret_access_key=aws_conn.password,
-#         region_name=aws_conn.extra_dejson.get("region_name", "ap-northeast-2")
-#     )
-#     return session.client("s3")
-
 # DAG 정의
 @dag(
     default_args={
@@ -47,8 +37,7 @@ def region_initial_tl_dag():
         SparkSubmitOperator를 통해 Spark job을 실행
         Region 데이터를 변환하고 S3에 적재
         """
-
-
+    
         spark_submit_task = SparkSubmitOperator(
             task_id="transform_region_data",
             application="/opt/airflow/spark/transform_region_data.py",
@@ -73,7 +62,10 @@ def region_initial_tl_dag():
             },
             jars="/opt/spark/jars/hadoop-aws-3.3.2.jar,/opt/spark/jars/aws-java-sdk-bundle-1.11.901.jar",
         )
-        return spark_submit_task.execute(context=None)
+
+        spark_result = spark_submit_task.execute(context={})
+        
+        return spark_result
 
     trigger_spark_job()
 

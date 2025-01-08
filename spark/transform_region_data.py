@@ -59,7 +59,8 @@ column_selection = {
     "tn_traveller_master": [
         "TRAVELER_ID", "RESIDENCE_SGG_CD", "TRAVEL_COMPANIONS_NUM", "GENDER", 
         "AGE_GRP", "EDU_NM", "JOB_NM", "TRAVEL_TERM", "TRAVEL_NUM", 
-        "INCOME", "HOUSE_INCOME", "TRAVEL_STYL_1", "TRAVEL_STYL_2", "TRAVEL_STYL_3"
+        "INCOME", "HOUSE_INCOME", "TRAVEL_STYL_1", "TRAVEL_STYL_2", "TRAVEL_STYL_3",
+        "TRAVEL_STATUS_START_YMD", "TRAVEL_STATUS_END_YMD"
     ],
     # 방문지정보 (SGG_CD, RESIDENCE_TIME_MIN 제거)
     "tn_visit_area": [
