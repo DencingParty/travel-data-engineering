@@ -52,8 +52,8 @@ def filter_by_date_region(dir1="aihub", dir2="2023", start_date="2023-06-04", en
         return {}
 
     region_dfs = {}
-    start_date = pd.to_datetime(start_date)
-    end_date = pd.to_datetime(end_date)
+    start_date = pd.to_datetime(start_date).date()
+    end_date = pd.to_datetime(end_date).date()
 
     for dataset in dataset_list:
         dataset_path = os.path.join(base_path, dataset)
@@ -70,11 +70,11 @@ def filter_by_date_region(dir1="aihub", dir2="2023", start_date="2023-06-04", en
             ymd_columns = [col for col in df.columns if col.endswith('YMD') and "START" not in col]
             min_columns = [col for col in df.columns if col.endswith('MIN')]
 
-            # 날짜 및 시간 변환 (datetime64[ms] 유지)
+            # 날짜 및 시간 변환
             for col in ymd_columns + min_columns:
-                df[col] = pd.to_datetime(df[col], errors="coerce") \
-                    .dt.floor("ms") \
-                    .astype("datetime64[ms]")  # ns -> ms 변환 유지
+                df[col] = pd.to_datetime(df[col], errors="coerce").astype('datetime64[ms]')  # 밀리초로 변환
+                if col in ymd_columns:  # 날짜만 유지
+                    df[col] = df[col].dt.date  # datetime.date 객체로 변환
 
             # 날짜 필터링
             if ymd_columns:
@@ -126,7 +126,8 @@ def upload_to_s3(data, start_date, is_gps=False):
 
             # DataFrame을 Parquet로 변환
             parquet_buffer = BytesIO()
-            df.to_parquet(parquet_buffer, engine='pyarrow', index=False)
+            df.to_parquet(parquet_buffer, engine='pyarrow', index=False, coerce_timestamps="ms") 
+
 
             # 변환된 Parquet을 S3 업로드
             s3_client.put_object(
