@@ -12,8 +12,8 @@ credentials = aws_hook.get_credentials()
 
 # 기본 설정
 S3_BUCKET_NAME = "travel-de-storage"
-RAW_FOLDER = "raw-data"
-PROCESSED_FOLDER = "processed-data"
+RAW_FOLDER = "raw-data-st-initial-test"
+PROCESSED_FOLDER = "processed-data-st-initial-test"
 
 # DAG 정의
 @dag(
@@ -47,8 +47,10 @@ def region_initial_tl_dag():
                 "--output_s3_path", f"s3a://{S3_BUCKET_NAME}/{PROCESSED_FOLDER}/",
                 "--aws_access_key", credentials.access_key,
                 "--aws_secret_key", credentials.secret_key,
-                "--start_date", "2022-01-02",
-                "--end_date", "2023-06-03",
+                # "--start_date", "2022-01-02",
+                "--start_date", "2022-08-07",
+                # "--end_date", "2023-06-03",
+                "--end_date", "2022-08-14",
             ],
             conf={
                 "spark.executor.memory": "2g",
@@ -64,7 +66,7 @@ def region_initial_tl_dag():
         )
 
         spark_result = spark_submit_task.execute(context={})
-        
+
         return spark_result
 
     trigger_spark_job()
