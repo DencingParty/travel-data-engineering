@@ -18,7 +18,7 @@ BASE_PATH = "/opt/airflow/data"
 
 # S3 설정
 S3_BUCKET_NAME = "travel-de-storage"
-RAW_FOLDER = "raw-data-st-initial-test"
+RAW_FOLDER = "raw-data"
 
 # S3 클라이언트 생성 함수
 def get_s3_client():
@@ -79,7 +79,9 @@ def filter_by_date_region(dir1="aihub", dir2="2023", start_date="2023-06-04", en
             # 날짜 필터링
             if ymd_columns:
                 if df_name.startswith("tn_traveller_master"):
-                    ymd_columns[0] = "TRAVEL_STATUS_END_YMD"
+                    filtered_df = df
+                    region_dfs[df_name] = filtered_df
+                    continue
                 logger.info(f"{df_name}의 필터링 기준 컬럼: {ymd_columns[0]}")
                 filtered_df = df[(df[ymd_columns[0]] >= start_date) & (df[ymd_columns[0]] <= end_date)]
             else:
@@ -116,7 +118,7 @@ def upload_to_s3(data, start_date, is_gps=False):
                 s3_key = f"{RAW_FOLDER}/{base_path}/{file_name_key}.parquet"
 
             else:
-                if "tc_" in file_name or "tn_activity_his_" in file_name:
+                if "tc_" in file_name or "tn_activity_his_" in file_name or "tn_traveller_master_" in file_name:
                     file_name_key = f"{file_name}"
                     s3_key = f"{RAW_FOLDER}/metadata/{file_name_key}.parquet"
 
@@ -158,7 +160,7 @@ def region_initial_extract_dag():
     @task
     def process_region_data():
         # weekly_dict = set_filtering_date(start_date="2022-01-02", end_date="2023-06-03", freq="7D")
-        weekly_dict = set_filtering_date(start_date="2022-08-07", end_date="2022-08-14", freq="7D")
+        weekly_dict = set_filtering_date(start_date="2022-01-02", end_date="2023-06-03", freq="7D")
         for week, date_range in weekly_dict.items():
             start_date = date_range["start_date"]
             end_date = date_range["end_date"]
