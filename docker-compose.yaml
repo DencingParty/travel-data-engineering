@@ -19,6 +19,7 @@ x-airflow-common: &airflow-common
     - ./plugins:/opt/airflow/plugins
     - ./data:/opt/airflow/data
     - ./spark:/opt/airflow/spark
+    - ./sql:/opt/airflow/sql
 
   user: '${AIRFLOW_UID:-50000}:0'
   depends_on: &airflow-common-depends-on
@@ -185,9 +186,9 @@ services:
         fi
 
         echo "Creating Airflow directories..."
-        mkdir -p /sources/{logs,dags,plugins,data,spark}
+        mkdir -p /sources/{logs,dags,plugins,data,spark,sql}
         echo "Adjusting permissions..."
-        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins,data,spark}
+        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins,data,spark,sql}
 
         echo "Initializing Airflow DB and creating user..."
         exec /entrypoint airflow db init && \
