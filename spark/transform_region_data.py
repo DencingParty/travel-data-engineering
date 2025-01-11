@@ -66,7 +66,7 @@ column_selection = {
     "tn_visit_area": [
         "TRAVEL_ID", "VISIT_AREA_ID", "VISIT_AREA_NM", "ROAD_NM_ADDR", 
         "LOTNO_ADDR", "X_COORD", "Y_COORD", 
-        "RCMDTN_INTENTION", "REVISIT_INTENTION", "DGSTFN"
+        "RCMDTN_INTENTION", "REVISIT_INTENTION", "DGSTFN", "VISIT_END_YMD"
     ]
 }
 

@@ -184,7 +184,7 @@ def upload_to_s3(data, start_date, is_gps=False):
         logger.error(f"일주일 ({start_date} ~ {end_date}) 데이터 업로드 중 오류 발생: {e}")
 
 # Snowflake SQL 파일 실행 함수
-def execute_sql_task(sql_filename):
+def run_sql_task(sql_filename, task_type):
     """
     SQL 파일을 읽어 SnowflakeHook를 통해 실행합니다.
     """
@@ -200,28 +200,51 @@ def execute_sql_task(sql_filename):
 
     try:
         # Snowflake 연결
-        logger.info(f"Executing SQL file: {sql_filename}")
+        logger.info(f"SQL 쿼리 파일 실행 중 ({task_type}): {sql_filename}")
         snowflake_conn = snowflake_hook.get_conn()
         cursor = snowflake_conn.cursor()
 
         # SQL 문을 세미콜론으로 분리하여 개별적으로 실행
         statements = [query.strip() for query in sql_query.split(';') if query.strip()]
         for idx, statement in enumerate(statements, start=1):
-            logger.info(f"Executing statement {idx}/{len(statements)}: {statement[:50]}...")
+            logger.info(f"실행 중인 SQL 쿼리 {idx}/{len(statements)}: {statement[:50]}...")
             cursor.execute(statement)
             logger.info(f"Statement {idx} affected {cursor.rowcount} rows.")
 
-        logger.info(f"Successfully executed all statements in SQL file: {sql_filename}")
+        logger.info(f"모든 SQL 문을 성공적으로 실행했습니다. ({task_type}): {sql_filename}")
 
     except Exception as e:
         # 실행 중 에러 발생 시 로그 기록 및 재전파
-        logger.error(f"Error while executing SQL file {sql_filename}: {str(e)}")
+        logger.error(f"SQL 파일 실행 중 오류 발생 ({task_type}): {sql_filename}: {str(e)}")
+        raise e
         raise e
     finally:
         # 커넥션 종료
         cursor.close()
         snowflake_conn.close()
+
+def reset_execute_sql_task(run_state, sql_filename_reset=None, sql_filename_execute=None):
+    """
+    SQL 파일을 읽어 SnowflakeHook를 통해 실행합니다.
+    run_state에 따라 reset -> execute 순으로 실행하거나, execute만 실행합니다.
+    """
+    if not sql_filename_execute:
+        raise ValueError("execute 작업을 위해 sql_filename_execute가 필요합니다.")
+
+    if run_state in ["pending", "force_reset"]:
+        if not sql_filename_reset:
+            raise ValueError("reset 작업을 위해 sql_filename_reset이 필요합니다.")
+        
+        # Snowflake Table Reset 작업 실행
+        logger.info("run_state가 'pending'입니다. Snowflake Raw Data Table 초기화를 수행합니다.")
+        run_sql_task(sql_filename_reset, "reset")
     
+    else:
+        logger.info("run_state가 'pending'이 아닙니다. Snowflake Raw Data Table 초기화를 건너뜁니다.")
+
+    # Execute 작업 실행
+    logger.info("Snowflake Raw Data Table 데이터를 처리합니다.")
+    run_sql_task(sql_filename_execute, "execute")
     
 # DAG 정의
 @dag(
@@ -229,7 +252,7 @@ def execute_sql_task(sql_filename):
         "owner": "airflow",
         "depends_on_past": False,
         "retries": 1,
-        "retry_delay": timedelta(minutes=5),
+        "retry_delay": timedelta(minutes=10),
     },
     schedule_interval=schedule_interval,  # 동적 스케줄링
     start_date=START_DATE,  # 스케쥴링 첫 실행 날짜
@@ -260,7 +283,7 @@ def region_weekly_etl_dag():
             logger.info("Variable 및 S3 데이터 초기화를 수행합니다.")
 
             # Variable 초기화
-            Variable.set(RUN_STATE_FLAG, "done")
+            # Variable.set(RUN_STATE_FLAG, "done")
             Variable.set("current_date", "2023-06-11")
             logger.info("Variable 초기화가 완료되었습니다.")
 
@@ -331,13 +354,17 @@ def region_weekly_etl_dag():
     # Snowflake와 연결하고 더미 SQL 파일을 실행하는 태스크
     @task
     def run_sql_from_snowflake():
-        execute_sql_task("append_weekly_region.sql")
-
+        run_state = Variable.get(RUN_STATE_FLAG, default_var="pending")
+        reset_execute_sql_task(run_state,
+                               sql_filename_reset="reset_to_initial_state_region.sql",
+                               sql_filename_execute="append_weekly_region.sql")
         
     # Variable 자동 업데이트 태스크
     @task
     def update_variable():
         next_date = (datetime.strptime(CURRENT_DATE, "%Y-%m-%d") + timedelta(weeks=1)).strftime("%Y-%m-%d")
+        
+        Variable.set(RUN_STATE_FLAG, "done")
         Variable.set("current_date", next_date)
         logger.info(f"Variable 'current_date'가 {next_date}(으)로 업데이트 되었습니다.")
 
