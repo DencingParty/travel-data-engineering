@@ -1,3 +1,34 @@
+/* 1. REGION_RAW_DATA의 테이블 변동 사항 저장할 STREAM 생성 */
+
+-- 세션에서 사용할 스키마 명시적으로 설정
+USE SCHEMA REGION_RAW_DATA;
+
+-- activity_consume 테이블 변동 사항 저장할 STREAM 생성
+CREATE OR REPLACE STREAM activity_consume_stream
+    ON TABLE REGION_RAW_DATA.activity_consume;
+
+-- lodge_consume 테이블 변동 사항 저장할 STREAM 생성
+CREATE OR REPLACE STREAM lodge_consume_stream
+    ON TABLE REGION_RAW_DATA.lodge_consume;
+
+-- move 테이블 변동 사항 저장할 STREAM 생성
+CREATE OR REPLACE STREAM move_stream
+    ON TABLE REGION_RAW_DATA.move;
+
+-- mvmn_consume 테이블 변동 사항 저장할 STREAM 생성
+CREATE OR REPLACE STREAM mvmn_consume_stream
+    ON TABLE REGION_RAW_DATA.mvmn_consume;
+
+-- travel 테이블 변동 사항 저장할 STREAM 생성
+CREATE OR REPLACE STREAM travel_stream
+    ON TABLE REGION_RAW_DATA.travel;
+
+-- VISIT_AREA_INFO 테이블 변동 사항 저장할 STREAM 생성
+CREATE OR REPLACE STREAM visit_area_info_stream
+    ON TABLE REGION_RAW_DATA.VISIT_AREA_INFO;
+
+
+/* 2. REGION_RAW_DATA에 주별 데이터 병합 */
 -- activity_consume 테이블에 주별 데이터 병합
 COPY INTO travel_data.region_raw_data.activity_consume
 FROM @travel_data.region_raw_data.s3_stage

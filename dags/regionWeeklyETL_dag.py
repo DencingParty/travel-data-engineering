@@ -217,13 +217,13 @@ def run_sql_task(sql_filename, task_type):
         # 실행 중 에러 발생 시 로그 기록 및 재전파
         logger.error(f"SQL 파일 실행 중 오류 발생 ({task_type}): {sql_filename}: {str(e)}")
         raise e
-        raise e
+
     finally:
         # 커넥션 종료
         cursor.close()
         snowflake_conn.close()
 
-def reset_execute_sql_task(run_state, sql_filename_reset=None, sql_filename_execute=None):
+def sql_reset_or_run_raw_data(run_state, sql_filename_reset=None, sql_filename_execute=None):
     """
     SQL 파일을 읽어 SnowflakeHook를 통해 실행합니다.
     run_state에 따라 reset -> execute 순으로 실행하거나, execute만 실행합니다.
@@ -245,7 +245,31 @@ def reset_execute_sql_task(run_state, sql_filename_reset=None, sql_filename_exec
     # Execute 작업 실행
     logger.info("Snowflake Raw Data Table 데이터를 처리합니다.")
     run_sql_task(sql_filename_execute, "execute")
+
+def sql_once_or_weekly_ad_hoc(run_state, sql_filename_once=None, sql_filename_schedule=None):
+    """
+    SQL 파일을 읽어 SnowflakeHook를 통해 실행합니다.
+    run_state에 따라 초기 작업 -> schedule 작업 순으로 실행하거나, schedule 작업만 실행합니다.
+    """
     
+    if not sql_filename_schedule:
+        raise ValueError("Schedule 작업을 위해 sql_filename_schedule가 필요합니다.")
+
+    if run_state in ["pending", "force_reset"]:
+        if not sql_filename_once:
+            raise ValueError("running-once 작업을 위해 sql_filename_once이 필요합니다.")
+        
+        # Snowflake Table running-once 작업 실행
+        logger.info("run_state가 'pending'입니다. Snowflake AD_HOC 스키마 정규화 및 테이블 생성을 수행합니다.")
+        run_sql_task(sql_filename_once, "running-once")
+    
+    else:
+        logger.info("run_state가 'pending'이 아닙니다. Snowflake AD_HOC 스키마 정규화 및 테이블 생성을 건너뜁니다.")
+
+    # schedule 작업 실행
+    logger.info("Snowflake AD_HOC 스키마 정규화 및 테이블 변경을 처리합니다.")
+    run_sql_task(sql_filename_schedule, "schedule")
+
 # DAG 정의
 @dag(
     default_args={
@@ -351,14 +375,26 @@ def region_weekly_etl_dag():
 
         return spark_result
     
-    # Snowflake와 연결하고 더미 SQL 파일을 실행하는 태스크
+    # Snowflake와 연결하고 SQL 파일을 실행하는 태스크
     @task
-    def run_sql_from_snowflake():
+    def execute_raw_data_sql_snowflake():
         run_state = Variable.get(RUN_STATE_FLAG, default_var="pending")
-        reset_execute_sql_task(run_state,
-                               sql_filename_reset="reset_to_initial_state_region.sql",
-                               sql_filename_execute="append_weekly_region.sql")
         
+        # Snowflake REGION_RAW_DATA 작업
+        logger.info("Snowflake RAW_DATA 작업을 시작합니다")
+        sql_reset_or_run_raw_data(run_state,
+                                  sql_filename_reset="reset_to_initial_state_region.sql",
+                                  sql_filename_execute="schedule_append_region.sql")
+
+    @task
+    def execute_ad_hoc_sql_snowflake():
+        run_state = Variable.get(RUN_STATE_FLAG, default_var="pending") 
+        # Snowflake REGION_AD_HOC 작업
+        logger.info("Snowflake AD_HOC 작업을 시작합니다")
+        sql_once_or_weekly_ad_hoc(run_state,
+                                  sql_filename_once="once_for_ad_hoc.sql",
+                                  sql_filename_schedule="schedule_for_ad_hoc.sql")
+
     # Variable 자동 업데이트 태스크
     @task
     def update_variable():
@@ -369,6 +405,6 @@ def region_weekly_etl_dag():
         logger.info(f"Variable 'current_date'가 {next_date}(으)로 업데이트 되었습니다.")
 
     # DAG 실행 순서
-    reset_variables_and_clean_s3() >> process_region_data() >> trigger_spark_job() >> run_sql_from_snowflake() >> update_variable()
+    reset_variables_and_clean_s3() >> process_region_data() >> trigger_spark_job() >> execute_raw_data_sql_snowflake() >> execute_ad_hoc_sql_snowflake() >> update_variable()
 
 dag = region_weekly_etl_dag()
