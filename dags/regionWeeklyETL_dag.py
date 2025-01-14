@@ -223,52 +223,32 @@ def run_sql_task(sql_filename, task_type):
         cursor.close()
         snowflake_conn.close()
 
-def sql_reset_or_run_raw_data(run_state, sql_filename_reset=None, sql_filename_execute=None):
-    """
-    SQL 파일을 읽어 SnowflakeHook를 통해 실행합니다.
-    run_state에 따라 reset -> execute 순으로 실행하거나, execute만 실행합니다.
-    """
-    if not sql_filename_execute:
-        raise ValueError("execute 작업을 위해 sql_filename_execute가 필요합니다.")
-
-    if run_state in ["pending", "force_reset"]:
-        if not sql_filename_reset:
-            raise ValueError("reset 작업을 위해 sql_filename_reset이 필요합니다.")
-        
-        # Snowflake Table Reset 작업 실행
-        logger.info("run_state가 'pending'입니다. Snowflake Raw Data Table 초기화를 수행합니다.")
-        run_sql_task(sql_filename_reset, "reset")
-    
-    else:
-        logger.info("run_state가 'pending'이 아닙니다. Snowflake Raw Data Table 초기화를 건너뜁니다.")
-
-    # Execute 작업 실행
-    logger.info("Snowflake Raw Data Table 데이터를 처리합니다.")
-    run_sql_task(sql_filename_execute, "execute")
-
-def sql_once_or_weekly_ad_hoc(run_state, sql_filename_once=None, sql_filename_schedule=None):
+def sql_once_or_scheduled(run_state, sql_filename_once=None, sql_filename_scheduled=None, schema="RAW_DATA"):
     """
     SQL 파일을 읽어 SnowflakeHook를 통해 실행합니다.
     run_state에 따라 초기 작업 -> schedule 작업 순으로 실행하거나, schedule 작업만 실행합니다.
     """
-    
-    if not sql_filename_schedule:
-        raise ValueError("Schedule 작업을 위해 sql_filename_schedule가 필요합니다.")
+    if not sql_filename_scheduled:
+        raise ValueError("schedule 작업을 위해 sql_filename_scheduled이 필요합니다.")
 
+    logger.info(f"작업 중인 Snowflake Schema: {schema}")
+
+    # 초기 작업 (공통 처리)
     if run_state in ["pending", "force_reset"]:
         if not sql_filename_once:
-            raise ValueError("running-once 작업을 위해 sql_filename_once이 필요합니다.")
+            raise ValueError(f"{schema} 스키마 초기 작업을 위해 sql_filename_once가 필요합니다.")
         
-        # Snowflake Table running-once 작업 실행
-        logger.info("run_state가 'pending'입니다. Snowflake AD_HOC 스키마 정규화 및 테이블 생성을 수행합니다.")
-        run_sql_task(sql_filename_once, "running-once")
-    
-    else:
-        logger.info("run_state가 'pending'이 아닙니다. Snowflake AD_HOC 스키마 정규화 및 테이블 생성을 건너뜁니다.")
+        reset_mode = "reset" if schema == "RAW_DATA" else "running-once"
+        logger.info(f"run_state가 {run_state}입니다. Snowflake {schema} 스키마의 초기 작업을 수행합니다. ({reset_mode})")
+        run_sql_task(sql_filename_once, reset_mode)
 
-    # schedule 작업 실행
-    logger.info("Snowflake AD_HOC 스키마 정규화 및 테이블 변경을 처리합니다.")
-    run_sql_task(sql_filename_schedule, "schedule")
+    else:
+        logger.info(f"run_state가 {run_state} 입니다. Snowflake {schema} 스키마의 초기 작업을 건너뜁니다.")
+
+    # schedule 작업 (공통 처리)
+    schedule_mode = "scheduled"
+    logger.info(f"Snowflake {schema} 스키마의 데이터를 스케쥴링하여 처리합니다. ({schedule_mode})")
+    run_sql_task(sql_filename_scheduled, schedule_mode)
 
 # DAG 정의
 @dag(
@@ -382,18 +362,20 @@ def region_weekly_etl_dag():
         
         # Snowflake REGION_RAW_DATA 작업
         logger.info("Snowflake RAW_DATA 작업을 시작합니다")
-        sql_reset_or_run_raw_data(run_state,
-                                  sql_filename_reset="reset_to_initial_state_region.sql",
-                                  sql_filename_execute="schedule_append_region.sql")
+        sql_once_or_scheduled(run_state,
+                              sql_filename_once="reset_to_initial_state_region.sql",
+                              sql_filename_scheduled="schedule_append_region.sql",
+                              schema="RAW_DATA")
 
     @task
     def execute_ad_hoc_sql_snowflake():
         run_state = Variable.get(RUN_STATE_FLAG, default_var="pending") 
         # Snowflake REGION_AD_HOC 작업
         logger.info("Snowflake AD_HOC 작업을 시작합니다")
-        sql_once_or_weekly_ad_hoc(run_state,
-                                  sql_filename_once="once_for_ad_hoc.sql",
-                                  sql_filename_schedule="schedule_for_ad_hoc.sql")
+        sql_once_or_scheduled(run_state,
+                              sql_filename_once="once_for_ad_hoc.sql",
+                              sql_filename_scheduled="schedule_for_ad_hoc.sql",
+                              schema="AD_HOC")
 
     # Variable 자동 업데이트 태스크
     @task
