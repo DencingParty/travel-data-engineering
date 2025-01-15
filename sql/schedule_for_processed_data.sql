@@ -1,63 +1,38 @@
-/* 1. 스케쥴된 기간마다 테이블의 변경 사항을 추적하는 STREAM 데이터를 읽어와서 AD_HOC 테이블로 복사 */
+/* 1. 스케쥴된 기간마다 테이블의 변경 사항을 추적하는 STREAM 데이터를 읽어와서 PROCESSED_DATA 테이블로 복사 */
 
 -- 세션에서 사용할 스키마 명시적으로 설정
 USE SCHEMA REGION_RAW_DATA;
 
 -- 새롭게 SIDO, SGG, SIDO_SGG 컬럼을 추가한 STREAM만 VIEW로 변경
--- lodge_consume_stream_ad_hoc을 VIEW로 변경
+-- lodge_consume_stream_processed_data을 VIEW로 변경
 CREATE OR REPLACE VIEW lodge_consume_stream_view AS
     SELECT TRAVEL_ID, LODGING_NM, ROAD_NM_ADDR, PAYMENT_AMT_WON, PAYMENT_DT_YMD,
         NULL AS SIDO,
         NULL AS SGG,
         NULL AS SIDO_SGG
-    FROM lodge_consume_stream_ad_hoc
+    FROM lodge_consume_stream_processed_data
     WHERE METADATA$ACTION = 'INSERT'; -- 새로 추가된 데이터만 선택
 
--- visit_area_info_stream_ad_hoc을 VIEW로 변경
+-- visit_area_info_stream_processed_data을 VIEW로 변경
 CREATE OR REPLACE VIEW visit_area_info_stream_view AS
     SELECT TRAVEL_ID, VISIT_AREA_ID, VISIT_AREA_NM, ROAD_NM_ADDR, LOTNO_ADDR,
         X_COORD, Y_COORD, RCMDTN_INTENTION, REVISIT_INTENTION, DGSTFN, VISIT_END_YMD,
         NULL AS SIDO,
         NULL AS SGG,
         NULL AS SIDO_SGG
-    FROM visit_area_info_stream_ad_hoc
+    FROM visit_area_info_stream_processed_data
     WHERE METADATA$ACTION = 'INSERT'; -- 새로 추가된 데이터만 선택
 
--- REGION_AD_HOC 스키마의 테이블에 변경 사항 적재
+-- REGION_PROCESSED_DATA 스키마의 테이블에 변경 사항 적재
 
--- 새로 추가된 데이터만 activity_consume_stream_ad_hoc에서 가져와서 REGION_AD_HOC.activity_consume에 적재
-INSERT INTO REGION_AD_HOC.activity_consume
-    SELECT TRAVEL_ID, VISIT_AREA_ID, ACTIVITY_TYPE_CD, 
-        PAYMENT_AMT_WON, PAYMENT_DT_YMD, STORE_NM
-    FROM activity_consume_stream_ad_hoc
-    WHERE METADATA$ACTION = 'INSERT'; -- 새로 추가된 데이터만 선택
-
--- 새로 추가된 데이터만 lodge_stream_view_ad_hoc에서 가져와서 REGION_AD_HOC.lodge에 적재
-INSERT INTO REGION_AD_HOC.lodge_consume
+-- 새로 추가된 데이터만 lodge_stream_view에서 가져와서 REGION_PROCESSED_DATA.lodge_consume에 적재
+INSERT INTO REGION_PROCESSED_DATA.lodge_consume
     SELECT TRAVEL_ID, LODGING_NM, ROAD_NM_ADDR, PAYMENT_AMT_WON, PAYMENT_DT_YMD,
         SIDO, SGG, SIDO_SGG
     FROM lodge_consume_stream_view;
 
--- 새로 추가된 데이터만 move_stream_ad_hoc에서 가져와서 REGION_AD_HOC.move에 적재
-INSERT INTO REGION_AD_HOC.move
-    SELECT TRAVEL_ID, TRIP_ID, START_DT_YMD, END_VISIT_AREA_ID, END_DT_YMD, MVMN_CD_1
-    FROM move_stream_ad_hoc
-    WHERE METADATA$ACTION = 'INSERT'; -- 새로 추가된 데이터만 선택
-
--- 새로 추가된 데이터만 mvmn_consume_stream_ad_hoc에서 가져와서 REGION_AD_HOC.mvmn_consume에 적재
-INSERT INTO REGION_AD_HOC.mvmn_consume
-    SELECT TRAVEL_ID, MVMN_SE_NM, PAYMENT_AMT_WON, PAYMENT_DT_YMD
-    FROM mvmn_consume_stream_ad_hoc
-    WHERE METADATA$ACTION = 'INSERT'; -- 새로 추가된 데이터만 선택
-
--- 새로 추가된 데이터만 travel_stream_ad_hoc에서 가져와서 REGION_AD_HOC.travel에 적재
-INSERT INTO REGION_AD_HOC.travel
-    SELECT TRAVEL_ID, TRAVEL_START_YMD, TRAVEL_END_YMD, TRAVEL_NM
-    FROM travel_stream_ad_hoc
-    WHERE METADATA$ACTION = 'INSERT'; -- 새로 추가된 데이터만 선택
-
--- 새로 추가된 데이터만 visit_area_info_stream_view에서 가져와서 REGION_AD_HOC.visit_area_info에 적재
-INSERT INTO REGION_AD_HOC.visit_area_info
+-- 새로 추가된 데이터만 visit_area_info_stream_view에서 가져와서 REGION_PROCESSED_DATA.visit_area_info에 적재
+INSERT INTO REGION_PROCESSED_DATA.visit_area_info
     SELECT TRAVEL_ID, VISIT_AREA_ID, VISIT_AREA_NM, ROAD_NM_ADDR, LOTNO_ADDR,
         X_COORD, Y_COORD, RCMDTN_INTENTION, REVISIT_INTENTION, DGSTFN, VISIT_END_YMD,
         SIDO, SGG, SIDO_SGG
@@ -67,7 +42,7 @@ INSERT INTO REGION_AD_HOC.visit_area_info
 /* 2. 지역 정보 파싱 & 데이터 정규화 */
 
 -- SIDO, SGG 값 업데이트 및 SIDO_SGG 생성
-UPDATE REGION_AD_HOC.LODGE_CONSUME
+UPDATE REGION_PROCESSED_DATA.LODGE_CONSUME
 SET 
     SIDO = CASE
         WHEN SPLIT_PART(ROAD_NM_ADDR, ' ', 1) IN ('서울특별시', '서울시', '서울') THEN '서울'
@@ -93,14 +68,14 @@ SET
     SIDO_SGG = TRIM(CONCAT(SIDO, ' ', SGG));
 
 -- 세종시의 SGG 값을 일원화하고, SIDO_SGG 업데이트
-UPDATE REGION_AD_HOC.LODGE_CONSUME
+UPDATE REGION_PROCESSED_DATA.LODGE_CONSUME
 SET 
     SGG = '세종시',
     SIDO_SGG = CONCAT(SIDO, ' 세종시')
 WHERE SIDO = '세종';
 
 -- 이상 데이터 삭제
-DELETE FROM REGION_AD_HOC.LODGE_CONSUME
+DELETE FROM REGION_PROCESSED_DATA.LODGE_CONSUME
 WHERE SIDO IS NULL 
    OR SIDO = ''
    OR SIDO NOT IN (
@@ -116,7 +91,7 @@ WHERE SIDO IS NULL
 
 /* 2. 방문지정보 (visit_area_info) 
    2-1. LOTNO_ADDR 기반 SIDO, SGG, SIDO_SGG 값 업데이트 */
-UPDATE REGION_AD_HOC.VISIT_AREA_INFO
+UPDATE REGION_PROCESSED_DATA.VISIT_AREA_INFO
 SET 
     SIDO = CASE
         WHEN SPLIT_PART(LOTNO_ADDR, ' ', 1) IN ('서울특별시', '서울시', '서울') THEN '서울'
@@ -142,14 +117,14 @@ SET
     SIDO_SGG = TRIM(CONCAT(SIDO, ' ', SGG));
 
 -- 2-2. 세종특별자치시의 SGG 값 일원화
-UPDATE REGION_AD_HOC.VISIT_AREA_INFO
+UPDATE REGION_PROCESSED_DATA.VISIT_AREA_INFO
 SET 
     SGG = '세종시',
     SIDO_SGG = CONCAT(SIDO, ' 세종시')
 WHERE SIDO = '세종';
 
 -- 2-3. 결측치 및 이상치 제거
-DELETE FROM REGION_AD_HOC.VISIT_AREA_INFO
+DELETE FROM REGION_PROCESSED_DATA.VISIT_AREA_INFO
 WHERE SIDO IS NULL 
    OR SIDO = ''
    OR SIDO NOT IN (

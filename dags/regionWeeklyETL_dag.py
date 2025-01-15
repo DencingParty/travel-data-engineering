@@ -11,6 +11,7 @@ import os
 import logging
 from io import BytesIO
 from pytz import utc
+from jinja2 import Template
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
@@ -184,16 +185,28 @@ def upload_to_s3(data, start_date, is_gps=False):
         logger.error(f"일주일 ({start_date} ~ {end_date}) 데이터 업로드 중 오류 발생: {e}")
 
 # Snowflake SQL 파일 실행 함수
-def run_sql_task(sql_filename, task_type):
+def run_sql_task(sql_filename, task_type, sql_params):
     """
     SQL 파일을 읽어 SnowflakeHook를 통해 실행합니다.
     """
+    
     sql_path = os.path.join(SQL_DIR, sql_filename)
     if not os.path.exists(sql_path):
         raise FileNotFoundError(f"{sql_path} 파일을 찾을 수 없습니다.")
     
     with open(sql_path, "r") as sql_file:
-        sql_query = sql_file.read()
+        sql_template = sql_file.read()
+    
+    # Jinja2 템플릿 렌더링
+    try:
+        if sql_params:
+            template = Template(sql_template)
+            sql_query = template.render(sql_params)
+        else:
+            sql_query = sql_template
+    except Exception as e:
+        logger.error(f"SQL 템플릿 렌더링 중 오류 발생 ({task_type}): {str(e)}")
+        raise e
 
     # Snowflake 연결 및 SQL 실행
     snowflake_hook = SnowflakeHook(snowflake_conn_id="snowflake_default")
@@ -207,7 +220,7 @@ def run_sql_task(sql_filename, task_type):
         # SQL 문을 세미콜론으로 분리하여 개별적으로 실행
         statements = [query.strip() for query in sql_query.split(';') if query.strip()]
         for idx, statement in enumerate(statements, start=1):
-            logger.info(f"실행 중인 SQL 쿼리 {idx}/{len(statements)}: {statement[:50]}...")
+            logger.info(f"실행 중인 SQL 쿼리 {idx}/{len(statements)}: {statement[:200]}...")
             cursor.execute(statement)
             logger.info(f"Statement {idx} affected {cursor.rowcount} rows.")
 
@@ -223,24 +236,29 @@ def run_sql_task(sql_filename, task_type):
         cursor.close()
         snowflake_conn.close()
 
-def sql_once_or_scheduled(run_state, sql_filename_once=None, sql_filename_scheduled=None, schema="RAW_DATA"):
+def sql_once_or_scheduled(run_state, sql_filename_once=None, sql_filename_scheduled=None, schema="RAW_DATA", start_date=None):
     """
     SQL 파일을 읽어 SnowflakeHook를 통해 실행합니다.
     run_state에 따라 초기 작업 -> schedule 작업 순으로 실행하거나, schedule 작업만 실행합니다.
     """
+    
+    # 동적으로 사용할 날짜 변수
+    sql_params = {"start_date": start_date} 
+
     if not sql_filename_scheduled:
         raise ValueError("schedule 작업을 위해 sql_filename_scheduled이 필요합니다.")
 
+    logger.info(f"작업 중인 날짜: {start_date}")
     logger.info(f"작업 중인 Snowflake Schema: {schema}")
 
     # 초기 작업 (공통 처리)
     if run_state in ["pending", "force_reset"]:
         if not sql_filename_once:
-            raise ValueError(f"{schema} 스키마 초기 작업을 위해 sql_filename_once가 필요합니다.")
-        
-        reset_mode = "reset" if schema == "RAW_DATA" else "running-once"
-        logger.info(f"run_state가 {run_state}입니다. Snowflake {schema} 스키마의 초기 작업을 수행합니다. ({reset_mode})")
-        run_sql_task(sql_filename_once, reset_mode)
+           logger.info(f"{schema} sql_filename_once가 없습니다. 초기 작업을 건너뜁니다.")
+        else:
+            reset_mode = "reset" if schema == "RAW_DATA" else "running-once"
+            logger.info(f"run_state가 {run_state}입니다. Snowflake {schema} 스키마의 초기 작업을 수행합니다. ({reset_mode})")
+            run_sql_task(sql_filename_once, reset_mode, sql_params)
 
     else:
         logger.info(f"run_state가 {run_state} 입니다. Snowflake {schema} 스키마의 초기 작업을 건너뜁니다.")
@@ -248,7 +266,7 @@ def sql_once_or_scheduled(run_state, sql_filename_once=None, sql_filename_schedu
     # schedule 작업 (공통 처리)
     schedule_mode = "scheduled"
     logger.info(f"Snowflake {schema} 스키마의 데이터를 스케쥴링하여 처리합니다. ({schedule_mode})")
-    run_sql_task(sql_filename_scheduled, schedule_mode)
+    run_sql_task(sql_filename_scheduled, schedule_mode, sql_params)
 
 # DAG 정의
 @dag(
@@ -265,6 +283,7 @@ def sql_once_or_scheduled(run_state, sql_filename_once=None, sql_filename_schedu
 )
 
 def region_weekly_etl_dag():
+
     @task
     def reset_variables_and_clean_s3(**kwargs):
         """
@@ -359,23 +378,62 @@ def region_weekly_etl_dag():
     @task
     def execute_raw_data_sql_snowflake():
         run_state = Variable.get(RUN_STATE_FLAG, default_var="pending")
-        
+
+        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
+        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%y%m%d")
+
         # Snowflake REGION_RAW_DATA 작업
         logger.info("Snowflake RAW_DATA 작업을 시작합니다")
         sql_once_or_scheduled(run_state,
                               sql_filename_once="reset_to_initial_state_region.sql",
                               sql_filename_scheduled="schedule_append_region.sql",
-                              schema="RAW_DATA")
+                              schema="RAW_DATA",
+                              start_date=start_date)
 
     @task
     def execute_ad_hoc_sql_snowflake():
         run_state = Variable.get(RUN_STATE_FLAG, default_var="pending") 
+
+        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
+        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%y%m%d")
+        
         # Snowflake REGION_AD_HOC 작업
         logger.info("Snowflake AD_HOC 작업을 시작합니다")
         sql_once_or_scheduled(run_state,
                               sql_filename_once="once_for_ad_hoc.sql",
                               sql_filename_scheduled="schedule_for_ad_hoc.sql",
-                              schema="AD_HOC")
+                              schema="AD_HOC",
+                              start_date=start_date)
+        
+    @task
+    def execute_processed_data_sql_snowflake():
+        run_state = Variable.get(RUN_STATE_FLAG, default_var="pending") 
+
+        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
+        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%y%m%d")
+        
+        # Snowflake REGION_AD_HOC 작업
+        logger.info("Snowflake Processed_Data 작업을 시작합니다")
+        sql_once_or_scheduled(run_state,
+                              sql_filename_once="once_for_processed_data.sql",
+                              sql_filename_scheduled="schedule_for_processed_data.sql",
+                              schema="Processed_Data",
+                              start_date=start_date)
+
+    @task
+    def execute_analysis_sql_snowflake():
+        run_state = Variable.get(RUN_STATE_FLAG, default_var="pending") 
+
+        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
+        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%y%m%d")
+        
+        # Snowflake REGION_AD_HOC 작업
+        logger.info("Snowflake Analysis 작업을 시작합니다")
+        sql_once_or_scheduled(run_state,
+                              sql_filename_once=None,
+                              sql_filename_scheduled="schedule_for_analysis.sql",
+                              schema="Analysis",
+                              start_date=start_date)
 
     # Variable 자동 업데이트 태스크
     @task
@@ -387,6 +445,6 @@ def region_weekly_etl_dag():
         logger.info(f"Variable 'current_date'가 {next_date}(으)로 업데이트 되었습니다.")
 
     # DAG 실행 순서
-    reset_variables_and_clean_s3() >> process_region_data() >> trigger_spark_job() >> execute_raw_data_sql_snowflake() >> execute_ad_hoc_sql_snowflake() >> update_variable()
+    reset_variables_and_clean_s3() >> process_region_data() >> trigger_spark_job() >> execute_raw_data_sql_snowflake() >> execute_ad_hoc_sql_snowflake() >> execute_processed_data_sql_snowflake() >> execute_analysis_sql_snowflake() >> update_variable()
 
 dag = region_weekly_etl_dag()
