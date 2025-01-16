@@ -425,7 +425,6 @@ def region_weekly_etl_dag():
     # Snowflake Task 설정 리스트
     snowflake_task_configs = [
         {"schema": "raw_data", "sql_filename_once": "reset_to_initial_state_region.sql", "sql_filename_scheduled": "schedule_append_region.sql"},
-        {"schema": "ad_hoc", "sql_filename_once": "once_for_ad_hoc.sql", "sql_filename_scheduled": "schedule_for_ad_hoc.sql"},
         {"schema": "processed_data", "sql_filename_once": "once_for_processed_data.sql", "sql_filename_scheduled": "schedule_for_processed_data.sql"},
         {"schema": "analysis", "sql_filename_once": None, "sql_filename_scheduled": "schedule_for_analysis.sql"},
     ]
