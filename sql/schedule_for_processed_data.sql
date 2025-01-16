@@ -41,7 +41,7 @@ INSERT INTO REGION_PROCESSED_DATA.visit_area_info
 
 /* 2. 지역 정보 파싱 & 데이터 정규화 */
 
--- SIDO, SGG 값 업데이트 및 SIDO_SGG 생성
+-- Step 1: SIDO, SGG 값 업데이트
 UPDATE REGION_PROCESSED_DATA.LODGE_CONSUME
 SET 
     SIDO = CASE
@@ -64,7 +64,11 @@ SET
         WHEN SPLIT_PART(ROAD_NM_ADDR, ' ', 1) IN ('세종특별자치시', '세종시', '세종') THEN '세종'
         ELSE SPLIT_PART(ROAD_NM_ADDR, ' ', 1)
     END,
-    SGG = SPLIT_PART(ROAD_NM_ADDR, ' ', 2),
+    SGG = SPLIT_PART(ROAD_NM_ADDR, ' ', 2);
+
+-- Step 2: SIDO_SGG 생성
+UPDATE REGION_PROCESSED_DATA.LODGE_CONSUME
+SET 
     SIDO_SGG = TRIM(CONCAT(SIDO, ' ', SGG));
 
 -- 세종시의 SGG 값을 일원화하고, SIDO_SGG 업데이트
@@ -113,7 +117,11 @@ SET
         WHEN SPLIT_PART(LOTNO_ADDR, ' ', 1) IN ('세종특별자치시', '세종시', '세종') THEN '세종'
         ELSE SPLIT_PART(LOTNO_ADDR, ' ', 1)
     END,
-    SGG = SPLIT_PART(LOTNO_ADDR, ' ', 2),
+    SGG = SPLIT_PART(LOTNO_ADDR, ' ', 2);
+
+-- Step 2: SIDO_SGG 생성
+UPDATE REGION_PROCESSED_DATA.VISIT_AREA_INFO
+SET 
     SIDO_SGG = TRIM(CONCAT(SIDO, ' ', SGG));
 
 -- 2-2. 세종특별자치시의 SGG 값 일원화
