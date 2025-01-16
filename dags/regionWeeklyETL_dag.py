@@ -268,6 +268,26 @@ def sql_once_or_scheduled(run_state, sql_filename_once=None, sql_filename_schedu
     logger.info(f"Snowflake {schema} 스키마의 데이터를 스케쥴링하여 처리합니다. ({schedule_mode})")
     run_sql_task(sql_filename_scheduled, schedule_mode, sql_params)
 
+def get_task_context():
+    """
+    DAG 실행을 위한 컨텍스트를 반환합니다.
+    Airflow에서 컨텍스트: 태스크 실행과 관련된 정보의 집합 (DAG 실행 정보, 환경 변수, 사용자 정의 데이터 등)
+    """
+
+    run_state = Variable.get(RUN_STATE_FLAG, default_var="pending")
+    forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
+    start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%Y-%m-%d")
+    end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=6)).strftime("%Y-%m-%d")
+    next_date = (datetime.strptime(CURRENT_DATE, "%Y-%m-%d") + timedelta(weeks=1)).strftime("%Y-%m-%d")
+
+    return {
+        "run_state": run_state,
+        "forced_date": forced_date,
+        "start_date": start_date,
+        "end_date": end_date,
+        "next_date": next_date
+    }
+
 # DAG 정의
 @dag(
     default_args={
@@ -284,14 +304,17 @@ def sql_once_or_scheduled(run_state, sql_filename_once=None, sql_filename_schedu
 
 def region_weekly_etl_dag():
 
+    context = get_task_context()
+
     @task
     def reset_variables_and_clean_s3(**kwargs):
         """
         최초 DAG 실행 또는 강제 초기화 시 S3 데이터 클리닝 및 Variable 초기화 수행.
         """
+        run_state = context["run_state"]
         dag_run = kwargs.get("dag_run")
         logger.info("초기화 작업을 시작합니다.")
-        run_state = Variable.get(RUN_STATE_FLAG, default_var="pending")
+        # run_state = Variable.get(RUN_STATE_FLAG, default_var="pending")
 
         if dag_run:
             logger.info(f"DAG run_type: {dag_run.run_type}, RUN_STATE_FLAG: {run_state}")
@@ -306,7 +329,6 @@ def region_weekly_etl_dag():
             logger.info("Variable 및 S3 데이터 초기화를 수행합니다.")
 
             # Variable 초기화
-            # Variable.set(RUN_STATE_FLAG, "done")
             Variable.set("current_date", "2023-06-11")
             logger.info("Variable 초기화가 완료되었습니다.")
 
@@ -321,9 +343,9 @@ def region_weekly_etl_dag():
 
     @task
     def process_region_data(execution_date=None):
-        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
-        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%Y-%m-%d")
-        end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=6)).strftime("%Y-%m-%d")
+
+        start_date = context["start_date"]
+        end_date = context["end_date"]
 
         logger.info(f"데이터 처리 기간: {start_date} ~ {end_date}")
 
@@ -340,9 +362,8 @@ def region_weekly_etl_dag():
 
         logger.info("Spark 작업을 시작합니다.")    
 
-        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
-        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%Y-%m-%d")
-        end_date = (datetime.strptime(start_date, "%Y-%m-%d") + timedelta(days=6)).strftime("%Y-%m-%d")
+        start_date = context["start_date"]
+        end_date = context["end_date"]
 
         spark_submit_task = SparkSubmitOperator(
             task_id="transform_region_data",
@@ -373,78 +394,60 @@ def region_weekly_etl_dag():
         logger.info(f"Spark 작업이 성공적으로 완료되었습니다.")
 
         return spark_result
-    
-    # Snowflake와 연결하고 SQL 파일을 실행하는 태스크
-    @task
-    def execute_raw_data_sql_snowflake():
-        run_state = Variable.get(RUN_STATE_FLAG, default_var="pending")
-
-        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
-        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%y%m%d")
-
-        # Snowflake REGION_RAW_DATA 작업
-        logger.info("Snowflake RAW_DATA 작업을 시작합니다")
-        sql_once_or_scheduled(run_state,
-                              sql_filename_once="reset_to_initial_state_region.sql",
-                              sql_filename_scheduled="schedule_append_region.sql",
-                              schema="RAW_DATA",
-                              start_date=start_date)
 
     @task
-    def execute_ad_hoc_sql_snowflake():
-        run_state = Variable.get(RUN_STATE_FLAG, default_var="pending") 
+    def execute_snowflake_sql(schema, sql_filename_once, sql_filename_scheduled):
+        """
+        공통 SQL 실행 로직을 처리하는 동적 Task 생성 함수.
+        """
+        run_state = context["run_state"]
+        start_date = datetime.strptime(context["start_date"], "%Y-%m-%d").strftime("%y%m%d")
 
-        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
-        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%y%m%d")
-        
-        # Snowflake REGION_AD_HOC 작업
-        logger.info("Snowflake AD_HOC 작업을 시작합니다")
-        sql_once_or_scheduled(run_state,
-                              sql_filename_once="once_for_ad_hoc.sql",
-                              sql_filename_scheduled="schedule_for_ad_hoc.sql",
-                              schema="AD_HOC",
-                              start_date=start_date)
-        
-    @task
-    def execute_processed_data_sql_snowflake():
-        run_state = Variable.get(RUN_STATE_FLAG, default_var="pending") 
-
-        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
-        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%y%m%d")
-        
-        # Snowflake REGION_AD_HOC 작업
-        logger.info("Snowflake Processed_Data 작업을 시작합니다")
-        sql_once_or_scheduled(run_state,
-                              sql_filename_once="once_for_processed_data.sql",
-                              sql_filename_scheduled="schedule_for_processed_data.sql",
-                              schema="Processed_Data",
-                              start_date=start_date)
-
-    @task
-    def execute_analysis_sql_snowflake():
-        run_state = Variable.get(RUN_STATE_FLAG, default_var="pending") 
-
-        forced_date = datetime.strptime(CURRENT_DATE, "%Y-%m-%d")
-        start_date = (START_DATE + timedelta(weeks=((forced_date - START_DATE).days // 7) - 1)).strftime("%y%m%d")
-        
-        # Snowflake REGION_AD_HOC 작업
-        logger.info("Snowflake Analysis 작업을 시작합니다")
-        sql_once_or_scheduled(run_state,
-                              sql_filename_once=None,
-                              sql_filename_scheduled="schedule_for_analysis.sql",
-                              schema="Analysis",
-                              start_date=start_date)
+        logger.info(f"Snowflake {schema} 작업을 시작합니다")
+        sql_once_or_scheduled(
+            run_state,
+            sql_filename_once=sql_filename_once,
+            sql_filename_scheduled=sql_filename_scheduled,
+            schema=schema,
+            start_date=start_date,
+        )
+        logger.info(f"Snowflake {schema} 작업이 완료되었습니다.")
 
     # Variable 자동 업데이트 태스크
     @task
     def update_variable():
-        next_date = (datetime.strptime(CURRENT_DATE, "%Y-%m-%d") + timedelta(weeks=1)).strftime("%Y-%m-%d")
+        next_date = context["next_date"]
         
         Variable.set(RUN_STATE_FLAG, "done")
         Variable.set("current_date", next_date)
         logger.info(f"Variable 'current_date'가 {next_date}(으)로 업데이트 되었습니다.")
 
+    # Snowflake Task 설정 리스트
+    snowflake_task_configs = [
+        {"schema": "raw_data", "sql_filename_once": "reset_to_initial_state_region.sql", "sql_filename_scheduled": "schedule_append_region.sql"},
+        {"schema": "ad_hoc", "sql_filename_once": "once_for_ad_hoc.sql", "sql_filename_scheduled": "schedule_for_ad_hoc.sql"},
+        {"schema": "processed_data", "sql_filename_once": "once_for_processed_data.sql", "sql_filename_scheduled": "schedule_for_processed_data.sql"},
+        {"schema": "analysis", "sql_filename_once": None, "sql_filename_scheduled": "schedule_for_analysis.sql"},
+    ]
+
+    # 동적으로 Task 생성 및 순차 연결
+    previous_task = reset_variables_and_clean_s3() >> process_region_data() >> trigger_spark_job()
+
+    # 동적으로 Snowflake Task 생성하고 순차적으로 연결
+    # 명시적으로 Task 이름을 설정하기 위해 @task 데코레이터에서 override() 설정
+    for config in snowflake_task_configs:
+        current_task = execute_snowflake_sql.override(task_id=f"execute_snowflake_sql_{config['schema']}")(
+            schema=config["schema"],
+            sql_filename_once=config["sql_filename_once"],
+            sql_filename_scheduled=config["sql_filename_scheduled"],
+        )
+        previous_task >> current_task  # 이전 Task와 연결
+        previous_task = current_task  # 현재 Task를 다음 Task의 부모로 설정
+    
+    # 마지막 Task
+    previous_task >> update_variable()
+
     # DAG 실행 순서
-    reset_variables_and_clean_s3() >> process_region_data() >> trigger_spark_job() >> execute_raw_data_sql_snowflake() >> execute_ad_hoc_sql_snowflake() >> execute_processed_data_sql_snowflake() >> execute_analysis_sql_snowflake() >> update_variable()
+    # reset_variables_and_clean_s3() >> process_region_data() >> trigger_spark_job() >> execute_raw_data_sql_snowflake() >> execute_ad_hoc_sql_snowflake() >> execute_processed_data_sql_snowflake() >> execute_analysis_sql_snowflake() >> update_variable()
 
 dag = region_weekly_etl_dag()
