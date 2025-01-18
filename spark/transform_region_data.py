@@ -1,7 +1,9 @@
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import col
+from pyspark.sql.functions import col, unix_timestamp
 from pyspark.sql.utils import AnalysisException
 from pyspark.sql import DataFrame
+from pyspark.sql.types import StructType, StructField, FloatType, StringType, LongType, DoubleType, TimestampType, IntegerType
+from pyspark.sql.functions import from_unixtime
 import argparse
 import logging
 import boto3
@@ -41,7 +43,7 @@ column_selection = {
     ],
     # 숙박소비내역 (ROAD_NM_ADDR 결측치 많음, LOTNO_ADDR 제거, PAYMENT_DT_MIN 제거)
     "tn_lodge_consume": [
-        "TRAVEL_ID", "LODGING_NM", "ROAD_NM_ADDR", 
+        "TRAVEL_ID", "LODGING_NM", "LODGING_TYPE_CD", "ROAD_NM_ADDR", 
         "PAYMENT_AMT_WON", "PAYMENT_DT_YMD"
     ],
     # 이동내역 (START_VISIT_AREA_ID, START_DT_YMD 제거)
@@ -62,7 +64,7 @@ column_selection = {
         "INCOME", "HOUSE_INCOME", "TRAVEL_STYL_1", "TRAVEL_STYL_2", "TRAVEL_STYL_3",
         "TRAVEL_STATUS_START_YMD", "TRAVEL_STATUS_END_YMD"
     ],
-    # 방문지정보 (SGG_CD, RESIDENCE_TIME_MIN 제거)
+    # 방문지정보 (SGG_CD 제거)
     "tn_visit_area": [
         "TRAVEL_ID", "VISIT_AREA_ID", "VISIT_AREA_NM", "ROAD_NM_ADDR", 
         "LOTNO_ADDR", "X_COORD", "Y_COORD", 
@@ -241,6 +243,7 @@ def process_parquet_file(spark, file_path, output_s3_path, bucket_name, aws_acce
         logger.info(f"{file_path} 읽는 중...")
         
         df = spark.read.parquet(file_path)
+
         file_name = os.path.basename(file_path)
         
         # 데이터 전처리

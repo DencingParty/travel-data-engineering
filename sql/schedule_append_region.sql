@@ -4,48 +4,24 @@
 USE SCHEMA REGION_RAW_DATA;
 
 -- activity_consume 테이블 변동 사항 저장할 STREAM 생성
-CREATE OR REPLACE STREAM activity_consume_stream_ad_hoc
-    ON TABLE REGION_RAW_DATA.activity_consume;
-
--- activity_consume 테이블 변동 사항 저장할 STREAM 생성
 CREATE OR REPLACE STREAM activity_consume_stream_processed_data
     ON TABLE REGION_RAW_DATA.activity_consume;
-
--- lodge_consume 테이블 변동 사항 저장할 STREAM 생성
-CREATE OR REPLACE STREAM lodge_consume_stream_ad_hoc
-    ON TABLE REGION_RAW_DATA.lodge_consume;
 
 -- lodge_consume 테이블 변동 사항 저장할 STREAM 생성
 CREATE OR REPLACE STREAM lodge_consume_stream_processed_data
     ON TABLE REGION_RAW_DATA.lodge_consume;
 
 -- move 테이블 변동 사항 저장할 STREAM 생성
-CREATE OR REPLACE STREAM move_stream_ad_hoc
-    ON TABLE REGION_RAW_DATA.move;
-
--- move 테이블 변동 사항 저장할 STREAM 생성
 CREATE OR REPLACE STREAM move_stream_processed_data
     ON TABLE REGION_RAW_DATA.move;
-
--- mvmn_consume 테이블 변동 사항 저장할 STREAM 생성
-CREATE OR REPLACE STREAM mvmn_consume_stream_ad_hoc
-    ON TABLE REGION_RAW_DATA.mvmn_consume;
 
 -- mvmn_consume 테이블 변동 사항 저장할 STREAM 생성
 CREATE OR REPLACE STREAM mvmn_consume_stream_processed_data
     ON TABLE REGION_RAW_DATA.mvmn_consume;
 
 -- travel 테이블 변동 사항 저장할 STREAM 생성
-CREATE OR REPLACE STREAM travel_stream_ad_hoc
-    ON TABLE REGION_RAW_DATA.travel;
-
--- travel 테이블 변동 사항 저장할 STREAM 생성
 CREATE OR REPLACE STREAM travel_stream_processed_data
     ON TABLE REGION_RAW_DATA.travel;
-
--- VISIT_AREA_INFO 테이블 변동 사항 저장할 STREAM 생성
-CREATE OR REPLACE STREAM visit_area_info_stream_ad_hoc
-    ON TABLE REGION_RAW_DATA.VISIT_AREA_INFO;
 
 -- VISIT_AREA_INFO 테이블 변동 사항 저장할 STREAM 생성
 CREATE OR REPLACE STREAM visit_area_info_stream_processed_data

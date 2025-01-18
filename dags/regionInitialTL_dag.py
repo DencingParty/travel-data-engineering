@@ -47,10 +47,10 @@ def region_initial_tl_dag():
                 "--output_s3_path", f"s3a://{S3_BUCKET_NAME}/{PROCESSED_FOLDER}/",
                 "--aws_access_key", credentials.access_key,
                 "--aws_secret_key", credentials.secret_key,
-                # "--start_date", "2022-01-02",
                 "--start_date", "2022-01-02",
-                # "--end_date", "2023-06-03",
+                # "--start_date", "2022-08-21",
                 "--end_date", "2023-06-03",
+                # "--end_date", "2022-08-28",
             ],
             conf={
                 "spark.executor.memory": "2g",
