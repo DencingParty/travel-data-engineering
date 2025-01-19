@@ -22,6 +22,7 @@ CREATE OR REPLACE VIEW visit_area_info_stream_view AS
         NULL AS SIDO_SGG
     FROM visit_area_info_stream_processed_data
     WHERE METADATA$ACTION = 'INSERT'; -- 새로 추가된 데이터만 선택
+    
 
 -- REGION_PROCESSED_DATA 스키마의 테이블에 변경 사항 적재
 
@@ -145,3 +146,33 @@ WHERE SIDO IS NULL
    OR SGG NOT LIKE '%구' 
    AND SGG NOT LIKE '%시'
    AND SGG NOT LIKE '%군';
+
+
+-- 3. REGION_VISIT_DATASET 테이블 업데이트
+
+-- 지역별 방문 빈도 (SIDO 및 REGION 중심)
+DROP TABLE IF EXISTS REGION_PROCESSED_DATA.REGION_VISIT_DATASET;
+CREATE TABLE REGION_PROCESSED_DATA.REGION_VISIT_DATASET AS
+SELECT
+    REGION.SIDO AS SIDO,          -- 시도 정보
+    REGION.REGION AS REGION,      -- 시도_시군구 결합 정보
+    COUNT(*) AS VISIT_COUNT       -- 지역별 방문 빈도
+FROM (
+    -- 여행-지역 고유 조합 추출
+    SELECT DISTINCT
+        t.TRAVEL_ID,              -- 여행 ID
+        v.SIDO,                  -- 시도 정보
+        v.SIDO_SGG AS REGION     -- 시도_시군구 결합 정보
+    FROM
+        REGION_RAW_DATA.TRAVEL t
+    INNER JOIN
+        REGION_PROCESSED_DATA.VISIT_AREA_INFO v
+        ON t.TRAVEL_ID = v.TRAVEL_ID
+    WHERE
+        v.SIDO IS NOT NULL       -- 유효한 시도 정보만 포함
+) AS REGION
+GROUP BY
+    REGION.SIDO, 
+    REGION.REGION
+ORDER BY
+    VISIT_COUNT DESC;
