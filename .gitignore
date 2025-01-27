@@ -1,5 +1,5 @@
 .env
 data/
 logs/
-dags/__pycache__/
+**/__pycache__/
 .DS_Store

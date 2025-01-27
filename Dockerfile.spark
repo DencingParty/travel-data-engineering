@@ -1,4 +1,4 @@
-FROM bitnami/spark:3.5.3
+FROM bitnami/spark:3.5.4
 
 USER 0
 
@@ -6,7 +6,7 @@ USER 0
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
     curl \
-    && pip3 install pyspark==3.5.3 \
+    && pip3 install pyspark==3.5.4 \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # 하둡-aws 및 aws-sdk 추가 (S3 연동 설정)
