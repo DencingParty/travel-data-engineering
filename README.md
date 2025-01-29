@@ -43,21 +43,21 @@
 - `region_analysis`: 최종 분석 데이터를 저장 (시각화 목적)
 ### 3-5. ETL 프로세스 (`Snowflake`)
 #### 3-5-1. Initial 데이터 (1년 6개월치 데이터) 
-1. 데이터 필터링: 2022/01 ~ 2023/05
-2. Snowflake에서 **Raw Data Schema 생성** 후, Spark를 통해 변환된 `S3/processed-data`의 **데이터 적재**
+- 데이터 필터링: 2022/01 ~ 2023/05
+- Snowflake에서 **Raw Data Schema 생성** 후, Spark를 통해 변환된 `S3/processed-data`의 **데이터 적재**
 #### 3-5-2. Weekly 데이터 (새롭게 추가되는 6개월치 데이터)
-1. DAG 스케줄링 및 Variable 설정: 1주별 실행 주기 (`@weekly`)
+- DAG 스케줄링 및 Variable 설정: 1주별 실행 주기 (`@weekly`)
     - Airflow Variable을 통해, **과거의 특정한 시점으로 DAG 실행 날짜 고정**
     - DAG가 Trigger될 때마다 (15분 간격), **DAG 실행 날짜를 1주일 후로 변환** 
-2. 데이터 필터링: 특정 날짜의 데이터를 필터링
-3. Raw Data Schema 갱신
+- 데이터 필터링: 특정 날짜의 데이터를 필터링
+- Raw Data Schema 갱신
     - `S3/processed-data`에 **Spark를 통해 변환되어 새로 추가된 1주일 치 데이터** 확인 
     - 해당 데이터를 바탕으로, **Snowflake의 `region_raw_data` 테이블 업데이트**
-4. Processed Data Schema 갱신
+- Processed Data Schema 갱신
     - `region_raw_data`의 **데이터 정규화 및 가공**을 통해, Snowflake **`region_processed_data` 테이블 업데이트**
-5. Analysis Schema 업데이트
+- Analysis Schema 업데이트
     - 새로운 데이터를 포함하도록 **Snowflake `region_analysis` 테이블 업데이트**
-6. 다음 실행 주기를 위한 Variable 업데이트
+- 다음 실행 주기를 위한 Variable 업데이트
     - e.g. 2023/06/04 → 2023/06/11
 ### 3-6. 데이터 분석 및 시각화
 - Data Warehouse (Snowflake)에서 데이터를 조회해 주요 인사이트 도출
